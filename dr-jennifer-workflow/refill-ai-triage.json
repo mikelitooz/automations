@@ -1,0 +1,414 @@
+{
+  "name": "Dr. Jennifer - Refill AI Triage (Claude Decision)",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "workflow-trigger",
+      "name": "When Called by Another Workflow",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [
+        240,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract patient and medication context from calling workflow\nconst inputData = $input.first().json;\n\nconst patientName = inputData.patientName || '';\nconst patientId = inputData.patientId || '';\nconst patientDOB = inputData.patientDOB || '';\nconst lastVisitDate = inputData.lastVisitDate || '';\nconst primaryDoctor = inputData.primaryDoctor || 'Dr. Jennifer';\nconst requestText = inputData.requestText || '';\nconst matchedMedication = inputData.matchedMedication || null;\nconst medications = inputData.medications || [];\n\n// Find the specific medication requested\nlet requestedMed = null;\nif (matchedMedication) {\n  requestedMed = medications.find(m => \n    m.medicationName.toLowerCase() === matchedMedication.toLowerCase()\n  );\n}\n\n// If no specific match, use the first medication (for ambiguous requests)\nif (!requestedMed && medications.length > 0) {\n  requestedMed = medications[0];\n}\n\n// Calculate days since last visit\nlet daysSinceLastVisit = null;\nif (lastVisitDate) {\n  const lastVisit = new Date(lastVisitDate);\n  const now = new Date();\n  daysSinceLastVisit = Math.floor((now - lastVisit) / (1000 * 60 * 60 * 24));\n}\n\n// Prepare structured context for AI\nconst aiContext = {\n  patient: {\n    name: patientName,\n    id: patientId,\n    dateOfBirth: patientDOB,\n    lastVisitDate: lastVisitDate,\n    daysSinceLastVisit: daysSinceLastVisit,\n    primaryDoctor: primaryDoctor\n  },\n  request: {\n    rawText: requestText,\n    matchedMedication: matchedMedication\n  },\n  requestedMedication: requestedMed ? {\n    name: requestedMed.medicationName,\n    dosage: requestedMed.dosage,\n    frequency: requestedMed.frequency,\n    lastFilledDate: requestedMed.lastFilled,\n    refillsRemaining: requestedMed.refillsRemaining || 0,\n    isControlledSubstance: requestedMed.controlledSubstance === true,\n    isActive: requestedMed.active === true\n  } : null,\n  allMedications: medications\n};\n\nreturn {\n  json: aiContext\n};"
+      },
+      "id": "prepare-ai-context",
+      "name": "Prepare AI Context",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        460,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build comprehensive clinical prompt for Claude AI\nconst context = $input.first().json;\n\nconst patient = context.patient;\nconst request = context.request;\nconst medication = context.requestedMedication;\nconst allMeds = context.allMedications;\n\n// Format medication list\nconst medList = allMeds.map((med, idx) => \n  `${idx + 1}. ${med.medicationName} ${med.dosage} - ${med.frequency} (Refills: ${med.refillsRemaining || 0}, Last filled: ${med.lastFilled || 'Unknown'})${med.controlledSubstance ? ' ⚠️ CONTROLLED' : ''}`\n).join('\\n');\n\n// Build system prompt with clinical protocols\nconst systemPrompt = `You are a medical prescription refill triage assistant for Dr. Jennifer's practice.\n\nYour role is to analyze refill requests and apply clinical protocols to determine the appropriate action.\n\nCLINICAL PROTOCOLS:\n\n✅ AUTO-APPROVE if ALL conditions met:\n1. Medication is currently on file for this patient\n2. At least 1 refill remaining on the prescription\n3. Last visit was within 180 days (6 months)\n4. NOT a controlled substance (Schedule II-V)\n5. Request clearly matches an active medication\n\n⚠️ NEEDS-APPROVAL if ANY condition met:\n1. Last visit was 180-365 days ago (6 months to 1 year)\n2. Zero refills remaining (needs new prescription)\n3. Request is ambiguous or doesn't clearly match medication on file\n4. Patient has multiple similar medications (e.g., different dosages)\n\n🚨 ESCALATE IMMEDIATELY if ANY condition met:\n1. Controlled substance (Schedule II-V: opioids, stimulants, benzodiazepines, etc.)\n2. Last visit was over 365 days ago (>1 year)\n3. Request mentions new medication not on file\n4. Patient safety concern (e.g., mentions side effects, dosage confusion)\n5. Request mentions changing dosage or frequency\n\nRETURN FORMAT:\nRespond with ONLY valid JSON (no markdown, no explanations outside JSON):\n{\n  \"decision\": \"AUTO-APPROVE\" | \"NEEDS-APPROVAL\" | \"ESCALATE\",\n  \"reasoning\": \"Brief clinical reasoning (1-2 sentences)\",\n  \"confidence\": 0.0-1.0,\n  \"flags\": [\"array of any concerns\"],\n  \"recommendedAction\": \"What should happen next\"\n}`;\n\n// Build user prompt with patient context\nconst userPrompt = `PATIENT CONTEXT:\nName: ${patient.name}\nID: ${patient.id}\nLast Visit: ${patient.lastVisitDate || 'Unknown'} ${patient.daysSinceLastVisit !== null ? `(${patient.daysSinceLastVisit} days ago)` : ''}\nPrimary Doctor: ${patient.primaryDoctor}\n\nPATIENT'S CURRENT MEDICATIONS:\n${medList}\n\nREFILL REQUEST:\nPatient sent: \"${request.rawText}\"\n${request.matchedMedication ? `Matched medication: ${request.matchedMedication}` : 'No clear medication match'}\n\n${medication ? `REQUESTED MEDICATION DETAILS:\n- Name: ${medication.name}\n- Dosage: ${medication.dosage}\n- Frequency: ${medication.frequency}\n- Last Filled: ${medication.lastFilledDate || 'Unknown'}\n- Refills Remaining: ${medication.refillsRemaining}\n- Controlled Substance: ${medication.isControlledSubstance ? 'YES ⚠️' : 'No'}\n- Status: ${medication.isActive ? 'Active' : 'Inactive'}` : 'No medication matched - patient may be requesting new medication'}\n\nQUESTION: Based on the clinical protocols, should this refill request be AUTO-APPROVED, require doctor approval (NEEDS-APPROVAL), or be ESCALATED immediately?`;\n\nreturn {\n  json: {\n    systemPrompt: systemPrompt,\n    userPrompt: userPrompt,\n    // Pass through context for later nodes\n    patientContext: context\n  }\n};"
+      },
+      "id": "build-clinical-prompt",
+      "name": "Build Clinical Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        680,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "model": "claude-3-5-sonnet-20241022",
+        "options": {
+          "temperature": 0.3,
+          "maxTokens": 500
+        }
+      },
+      "id": "claude-ai-decision",
+      "name": "Claude AI: Make Decision",
+      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "typeVersion": 1,
+      "position": [
+        900,
+        300
+      ],
+      "credentials": {
+        "anthropicApi": {
+          "id": "anthropic-api-credential",
+          "name": "Anthropic Claude API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse Claude's JSON response and validate\nconst aiResponse = $input.first().json;\nconst promptData = $('Build Clinical Prompt').first().json;\n\nlet decision = null;\nlet parseError = false;\n\n// Try to extract JSON from AI response\ntry {\n  // Claude might return markdown-wrapped JSON, so extract it\n  let responseText = '';\n  \n  // Handle different response formats from LangChain node\n  if (typeof aiResponse === 'string') {\n    responseText = aiResponse;\n  } else if (aiResponse.response) {\n    responseText = aiResponse.response;\n  } else if (aiResponse.text) {\n    responseText = aiResponse.text;\n  } else if (aiResponse.output) {\n    responseText = aiResponse.output;\n  } else {\n    // If response is already an object with decision field\n    if (aiResponse.decision) {\n      decision = aiResponse;\n    } else {\n      responseText = JSON.stringify(aiResponse);\n    }\n  }\n  \n  if (!decision && responseText) {\n    // Remove markdown code blocks if present\n    responseText = responseText.replace(/```json\\n?/g, '').replace(/```\\n?/g, '').trim();\n    \n    // Parse JSON\n    decision = JSON.parse(responseText);\n  }\n  \n  // Validate decision structure\n  if (!decision.decision || !['AUTO-APPROVE', 'NEEDS-APPROVAL', 'ESCALATE'].includes(decision.decision)) {\n    throw new Error('Invalid decision value');\n  }\n  \n} catch (error) {\n  console.error('Failed to parse AI response:', error.message);\n  parseError = true;\n  \n  // Fallback: escalate on parse errors (safety first)\n  decision = {\n    decision: 'ESCALATE',\n    reasoning: `AI response parsing failed: ${error.message}. Escalating for manual review.`,\n    confidence: 0.0,\n    flags: ['parse-error', 'manual-review-required'],\n    recommendedAction: 'Manual review by doctor required due to system error'\n  };\n}\n\n// Add metadata\nconst output = {\n  // AI decision\n  decision: decision.decision,\n  reasoning: decision.reasoning || 'No reasoning provided',\n  confidence: decision.confidence || 0.0,\n  flags: decision.flags || [],\n  recommendedAction: decision.recommendedAction || '',\n  \n  // Metadata\n  parseError: parseError,\n  timestamp: new Date().toISOString(),\n  aiModel: 'claude-3-5-sonnet-20241022',\n  \n  // Original context (for next workflow)\n  patientContext: promptData.patientContext,\n  \n  // For audit log\n  systemPrompt: promptData.systemPrompt,\n  userPrompt: promptData.userPrompt,\n  rawAIResponse: aiResponse\n};\n\nreturn { json: output };"
+      },
+      "id": "parse-ai-response",
+      "name": "Parse AI Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "decision-is-auto-approve",
+              "leftValue": "={{ $json.decision }}",
+              "rightValue": "AUTO-APPROVE",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "route-by-decision",
+      "name": "Route by Decision",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [
+        1340,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "return-decision",
+              "name": "decision",
+              "value": "={{ $json.decision }}",
+              "type": "string"
+            },
+            {
+              "id": "return-reasoning",
+              "name": "reasoning",
+              "value": "={{ $json.reasoning }}",
+              "type": "string"
+            },
+            {
+              "id": "return-confidence",
+              "name": "confidence",
+              "value": "={{ $json.confidence }}",
+              "type": "number"
+            },
+            {
+              "id": "return-action",
+              "name": "recommendedAction",
+              "value": "={{ $json.recommendedAction }}",
+              "type": "string"
+            },
+            {
+              "id": "return-patient-context",
+              "name": "patientContext",
+              "value": "={{ $json.patientContext }}",
+              "type": "object"
+            },
+            {
+              "id": "return-timestamp",
+              "name": "timestamp",
+              "value": "={{ $json.timestamp }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "return-auto-approve",
+      "name": "Return: AUTO-APPROVE",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1560,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "return-decision-needs",
+              "name": "decision",
+              "value": "={{ $json.decision }}",
+              "type": "string"
+            },
+            {
+              "id": "return-reasoning-needs",
+              "name": "reasoning",
+              "value": "={{ $json.reasoning }}",
+              "type": "string"
+            },
+            {
+              "id": "return-confidence-needs",
+              "name": "confidence",
+              "value": "={{ $json.confidence }}",
+              "type": "number"
+            },
+            {
+              "id": "return-action-needs",
+              "name": "recommendedAction",
+              "value": "={{ $json.recommendedAction }}",
+              "type": "string"
+            },
+            {
+              "id": "return-patient-context-needs",
+              "name": "patientContext",
+              "value": "={{ $json.patientContext }}",
+              "type": "object"
+            },
+            {
+              "id": "return-timestamp-needs",
+              "name": "timestamp",
+              "value": "={{ $json.timestamp }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "return-needs-approval",
+      "name": "Return: NEEDS-APPROVAL",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1560,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "return-decision-escalate",
+              "name": "decision",
+              "value": "={{ $json.decision }}",
+              "type": "string"
+            },
+            {
+              "id": "return-reasoning-escalate",
+              "name": "reasoning",
+              "value": "={{ $json.reasoning }}",
+              "type": "string"
+            },
+            {
+              "id": "return-confidence-escalate",
+              "name": "confidence",
+              "value": "={{ $json.confidence }}",
+              "type": "number"
+            },
+            {
+              "id": "return-action-escalate",
+              "name": "recommendedAction",
+              "value": "={{ $json.recommendedAction }}",
+              "type": "string"
+            },
+            {
+              "id": "return-patient-context-escalate",
+              "name": "patientContext",
+              "value": "={{ $json.patientContext }}",
+              "type": "object"
+            },
+            {
+              "id": "return-timestamp-escalate",
+              "name": "timestamp",
+              "value": "={{ $json.timestamp }}",
+              "type": "string"
+            },
+            {
+              "id": "return-flags-escalate",
+              "name": "flags",
+              "value": "={{ $json.flags }}",
+              "type": "array"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "return-escalate",
+      "name": "Return: ESCALATE",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1560,
+        600
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 🤖 AI Triage Workflow\n\n**Purpose**: Use Claude AI to intelligently triage prescription refill requests\n\n**Called by**: Refill Request Receiver workflow\n\n**Process**:\n1️⃣ Receive patient context from receiver\n2️⃣ Prepare AI context (patient, medications, request)\n3️⃣ Build clinical prompt with protocols\n4️⃣ Claude AI makes decision based on protocols\n5️⃣ Parse and validate AI response\n6️⃣ Route by decision (AUTO-APPROVE, NEEDS-APPROVAL, ESCALATE)\n7️⃣ Return decision to processor workflow\n\n**AI Model**: Claude 3.5 Sonnet (temperature: 0.3 for consistency)\n\n**Clinical Protocols Applied**:\n✅ AUTO-APPROVE: Med on file, refills available, recent visit, not controlled\n⚠️ NEEDS-APPROVAL: No refills, 6-12 months since visit, ambiguous request\n🚨 ESCALATE: Controlled substance, >1 year since visit, safety concern\n\n**Safety**:\n- Parse errors → auto-escalate\n- All decisions logged with reasoning\n- Doctor reviews protocols before activation",
+        "height": 542,
+        "width": 389,
+        "color": 4
+      },
+      "id": "sticky-note-workflow-info",
+      "name": "Workflow Info",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        240,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 📊 Decision Logic\n\n**AUTO-APPROVE Criteria (ALL must be true)**:\n✅ Medication currently on file\n✅ At least 1 refill remaining\n✅ Last visit within 180 days (6 months)\n✅ NOT controlled substance\n✅ Request clearly matches medication\n\n**NEEDS-APPROVAL Criteria (ANY true)**:\n⚠️ Last visit 180-365 days ago\n⚠️ Zero refills remaining\n⚠️ Ambiguous request\n⚠️ Multiple similar medications\n\n**ESCALATE Criteria (ANY true)**:\n🚨 Controlled substance (Schedule II-V)\n🚨 Last visit over 365 days ago\n🚨 New medication not on file\n🚨 Safety concern mentioned\n🚨 Dosage/frequency change requested\n\n**Parse Error Handling**:\nIf AI response cannot be parsed → ESCALATE (safety first)",
+        "height": 542,
+        "width": 389,
+        "color": 5
+      },
+      "id": "sticky-note-decision-logic",
+      "name": "Decision Logic",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        660,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 🎯 Output Format\n\n**Returns to Processor Workflow**:\n\n```json\n{\n  \"decision\": \"AUTO-APPROVE\",\n  \"reasoning\": \"Patient has 3 refills remaining, last visit was 45 days ago, and request clearly matches lisinopril 10mg on file.\",\n  \"confidence\": 0.95,\n  \"recommendedAction\": \"Send to pharmacy via Surescripts\",\n  \"patientContext\": {...},\n  \"timestamp\": \"2026-01-27T14:30:00Z\"\n}\n```\n\n**Processor workflow uses this to**:\n- AUTO-APPROVE → Send to pharmacy + SMS confirmation\n- NEEDS-APPROVAL → Alert doctor via Slack\n- ESCALATE → Immediate staff notification\n\n**Audit Trail**:\nAll decisions logged to Google Sheets with:\n- Patient ID, medication, decision, reasoning\n- AI confidence score, timestamp\n- Used for compliance and quality review",
+        "height": 542,
+        "width": 389,
+        "color": 6
+      },
+      "id": "sticky-note-output",
+      "name": "Output Format",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1080,
+        480
+      ]
+    }
+  ],
+  "connections": {
+    "When Called by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "Prepare AI Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare AI Context": {
+      "main": [
+        [
+          {
+            "node": "Build Clinical Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Clinical Prompt": {
+      "main": [
+        [
+          {
+            "node": "Claude AI: Make Decision",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claude AI: Make Decision": {
+      "main": [
+        [
+          {
+            "node": "Parse AI Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse AI Response": {
+      "main": [
+        [
+          {
+            "node": "Route by Decision",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route by Decision": {
+      "main": [
+        [
+          {
+            "node": "Return: AUTO-APPROVE",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Return: NEEDS-APPROVAL",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Return: ESCALATE",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 0,
+  "updatedAt": "2026-01-27T14:00:00.000Z",
+  "versionId": "1"
+}

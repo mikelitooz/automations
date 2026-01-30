@@ -1,0 +1,366 @@
+{
+  "name": "Dr. Jennifer - Lab Results Receiver",
+  "nodes": [
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute",
+              "value": 15
+            }
+          ]
+        },
+        "filters": {
+          "from": "noreply@labcorp.com,results@questdiagnostics.com,lab@example.com",
+          "subject": "Lab Results"
+        },
+        "options": {
+          "allowUnauthorizedCerts": false,
+          "attachments": "all",
+          "downloadAttachments": true
+        }
+      },
+      "id": "email-trigger",
+      "name": "Monitor Lab Email Inbox",
+      "type": "n8n-nodes-base.emailReadImap",
+      "typeVersion": 2,
+      "position": [
+        240,
+        400
+      ],
+      "credentials": {
+        "imap": {
+          "id": "lab-email-credential",
+          "name": "Lab Results Email"
+        }
+      },
+      "notes": "Monitors dedicated email inbox for lab results\nLabs send PDFs as attachments\nChecks every 15 minutes"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract email metadata\nconst emailData = $input.first().json;\n\nconst subject = emailData.subject || '';\nconst from = emailData.from || '';\nconst receivedDate = emailData.date || new Date().toISOString();\nconst messageId = emailData.messageId || '';\n\n// Check if email has PDF attachments\nconst attachments = emailData.attachments || [];\nconst pdfAttachments = attachments.filter(att => \n  att.mimeType === 'application/pdf' || \n  att.filename.toLowerCase().endsWith('.pdf')\n);\n\nif (pdfAttachments.length === 0) {\n  throw new Error('No PDF attachments found in email');\n}\n\n// Prepare for PDF extraction\nreturn {\n  json: {\n    emailSubject: subject,\n    labCompany: from,\n    receivedDate: receivedDate,\n    messageId: messageId,\n    pdfCount: pdfAttachments.length,\n    // Pass through for next node\n    hasAttachments: true\n  }\n};"
+      },
+      "id": "extract-email-metadata",
+      "name": "Extract Email Metadata",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        460,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "binaryPropertyName": "data",
+        "options": {}
+      },
+      "id": "read-pdf-attachment",
+      "name": "Read PDF Attachment",
+      "type": "n8n-nodes-base.readPDF",
+      "typeVersion": 1,
+      "position": [
+        680,
+        400
+      ],
+      "notes": "Extracts text from lab result PDF"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse lab result PDF text to extract patient info and test values\nconst pdfText = $input.first().json.text || '';\n\n// Helper function to extract value after a label\nfunction extractValue(text, label) {\n  const regex = new RegExp(label + '\\\\s*:?\\\\s*([^\\\\n]+)', 'i');\n  const match = text.match(regex);\n  return match ? match[1].trim() : null;\n}\n\n// Helper function to extract date\nfunction extractDate(text, label) {\n  const regex = new RegExp(label + '\\\\s*:?\\\\s*(\\\\d{1,2}[/-]\\\\d{1,2}[/-]\\\\d{2,4})', 'i');\n  const match = text.match(regex);\n  return match ? match[1].trim() : null;\n}\n\n// Extract patient demographics\nconst patientName = extractValue(pdfText, 'Patient Name|Patient');\nconst patientDOB = extractDate(pdfText, 'Date of Birth|DOB|Birth Date');\nconst patientMRN = extractValue(pdfText, 'MRN|Medical Record|Patient ID');\nconst patientGender = extractValue(pdfText, 'Gender|Sex');\n\n// Extract test information\nconst collectionDate = extractDate(pdfText, 'Collection Date|Collected|Specimen Date');\nconst reportDate = extractDate(pdfText, 'Report Date|Reported');\nconst orderingProvider = extractValue(pdfText, 'Ordering Provider|Physician|Doctor');\n\n// Extract test results (simplified - real implementation needs more robust parsing)\n// Format: Test Name | Value | Reference Range | Flag\nconst testResults = [];\n\n// Common lab test patterns to look for\nconst commonTests = [\n  { name: 'Glucose', pattern: /Glucose[\\\\s:]*([\\\\d.]+)\\\\s*mg\\\\/dL/i },\n  { name: 'Hemoglobin', pattern: /Hemoglobin[\\\\s:]*([\\\\d.]+)\\\\s*g\\\\/dL/i },\n  { name: 'WBC', pattern: /WBC|White Blood Cell[\\\\s:]*([\\\\d.]+)\\\\s*K\\\\/uL/i },\n  { name: 'RBC', pattern: /RBC|Red Blood Cell[\\\\s:]*([\\\\d.]+)\\\\s*M\\\\/uL/i },\n  { name: 'Platelet', pattern: /Platelet[\\\\s:]*([\\\\d.]+)\\\\s*K\\\\/uL/i },\n  { name: 'Total Cholesterol', pattern: /Total Cholesterol[\\\\s:]*([\\\\d.]+)\\\\s*mg\\\\/dL/i },\n  { name: 'LDL', pattern: /LDL[\\\\s:]*([\\\\d.]+)\\\\s*mg\\\\/dL/i },\n  { name: 'HDL', pattern: /HDL[\\\\s:]*([\\\\d.]+)\\\\s*mg\\\\/dL/i },\n  { name: 'Triglycerides', pattern: /Triglycerides[\\\\s:]*([\\\\d.]+)\\\\s*mg\\\\/dL/i },\n  { name: 'Creatinine', pattern: /Creatinine[\\\\s:]*([\\\\d.]+)\\\\s*mg\\\\/dL/i },\n  { name: 'eGFR', pattern: /eGFR[\\\\s:]*([\\\\d.]+)/i },\n  { name: 'TSH', pattern: /TSH[\\\\s:]*([\\\\d.]+)\\\\s*uIU\\\\/mL/i },\n  { name: 'A1C', pattern: /A1C|Hemoglobin A1c[\\\\s:]*([\\\\d.]+)\\\\s*%/i }\n];\n\ncommonTests.forEach(test => {\n  const match = pdfText.match(test.pattern);\n  if (match) {\n    testResults.push({\n      testName: test.name,\n      value: parseFloat(match[1]),\n      // Reference ranges would be extracted from PDF or looked up in database\n      flagged: false // Will be determined by AI triage\n    });\n  }\n});\n\n// Check if we successfully extracted patient info\nif (!patientName && !patientMRN) {\n  throw new Error('Failed to extract patient information from PDF. Manual review needed.');\n}\n\n// Check if we extracted any test results\nif (testResults.length === 0) {\n  console.warn('No test results extracted from PDF. May need manual parsing.');\n}\n\n// Prepare output for AI triage\nreturn {\n  json: {\n    // Patient demographics\n    patient: {\n      name: patientName || 'Unknown',\n      dateOfBirth: patientDOB || null,\n      mrn: patientMRN || null,\n      gender: patientGender || null\n    },\n    \n    // Test metadata\n    labOrder: {\n      collectionDate: collectionDate || null,\n      reportDate: reportDate || new Date().toISOString().split('T')[0],\n      orderingProvider: orderingProvider || 'Dr. Jennifer',\n      labCompany: $('Extract Email Metadata').first().json.labCompany || 'Unknown'\n    },\n    \n    // Test results\n    tests: testResults,\n    testCount: testResults.length,\n    \n    // For logging\n    pdfTextLength: pdfText.length,\n    extractionTimestamp: new Date().toISOString(),\n    \n    // Pass through email metadata\n    emailMetadata: $('Extract Email Metadata').first().json\n  }\n};"
+      },
+      "id": "parse-lab-results",
+      "name": "Parse Lab Results from PDF",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        900,
+        400
+      ],
+      "notes": "Extracts patient info and test values from PDF text\nUses regex patterns for common lab tests\nReal implementation may need more sophisticated parsing"
+    },
+    {
+      "parameters": {
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $env.GOOGLE_SHEET_ID }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Patients",
+          "mode": "name"
+        },
+        "filters": {
+          "conditions": [
+            {
+              "column": "Patient_Name",
+              "value": "={{ $json.patient.name }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "lookup-patient",
+      "name": "Lookup Patient in Database",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.4,
+      "position": [
+        1120,
+        400
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "google-sheets-credential",
+          "name": "Google Sheets Account"
+        }
+      },
+      "notes": "Looks up patient to get phone number, email, last visit"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "patient-found",
+              "leftValue": "={{ $json.Patient_ID !== undefined && $json.Patient_ID !== null }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-patient-found",
+      "name": "Patient Found?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1340,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Merge patient demographics from database with lab results\nconst labData = $('Parse Lab Results from PDF').first().json;\nconst patientData = $input.first().json;\n\n// Prepare complete context for AI triage\nconst fullContext = {\n  patient: {\n    // From database (more reliable)\n    id: patientData.Patient_ID || null,\n    name: patientData.Patient_Name || labData.patient.name,\n    dateOfBirth: patientData.DOB || labData.patient.dateOfBirth,\n    phone: patientData.Phone || null,\n    email: patientData.Email || null,\n    primaryDoctor: patientData.Primary_Doctor || labData.labOrder.orderingProvider,\n    lastVisitDate: patientData.Last_Visit_Date || null,\n    \n    // From lab PDF\n    mrn: labData.patient.mrn,\n    gender: labData.patient.gender\n  },\n  \n  labOrder: labData.labOrder,\n  \n  tests: labData.tests,\n  testCount: labData.testCount,\n  \n  // For audit trail\n  metadata: {\n    receivedVia: 'email',\n    emailSubject: labData.emailMetadata.emailSubject,\n    extractionTimestamp: labData.extractionTimestamp\n  }\n};\n\nreturn {\n  json: fullContext\n};"
+      },
+      "id": "merge-patient-data",
+      "name": "Merge Patient Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1560,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.twilio.com/2010-04-01/Accounts/={{ $credentials.twilioApi.accountSid }}/Messages.json",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "twilioApi",
+        "sendBody": true,
+        "contentType": "form-urlencoded",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "From",
+              "value": "={{ $env.TWILIO_OFFICE_PHONE_NUMBER }}"
+            },
+            {
+              "name": "To",
+              "value": "={{ $env.STAFF_ALERT_PHONE }}"
+            },
+            {
+              "name": "Body",
+              "value": "=⚠️ LAB RESULTS - Patient Not Found\n\nLab results received for:\n{{ $('Parse Lab Results from PDF').first().json.patient.name }}\nDOB: {{ $('Parse Lab Results from PDF').first().json.patient.dateOfBirth || 'Unknown' }}\nMRN: {{ $('Parse Lab Results from PDF').first().json.patient.mrn || 'Unknown' }}\n\nPatient not found in system. Please review and manually process.\n\nEmail subject: {{ $('Parse Lab Results from PDF').first().json.emailMetadata.emailSubject }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "alert-patient-not-found",
+      "name": "Alert Staff - Patient Not Found",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1560,
+        500
+      ],
+      "credentials": {
+        "twilioApi": {
+          "id": "twilio-credential",
+          "name": "Twilio Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "workflowId": "={{ $env.LAB_RESULTS_AI_TRIAGE_WORKFLOW_ID }}",
+        "options": {}
+      },
+      "id": "call-ai-triage",
+      "name": "Call AI Triage Workflow",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.1,
+      "position": [
+        1780,
+        300
+      ],
+      "notes": "Passes complete patient + lab data to AI triage workflow\nAI will analyze values and determine NORMAL/ABNORMAL/CRITICAL"
+    },
+    {
+      "parameters": {
+        "content": "## 📧 Lab Results Receiver Workflow\n\n**Purpose**: Monitor email inbox for lab result PDFs, extract data, prepare for AI triage\n\n**Trigger**: IMAP email polling (every 15 minutes)\n\n**Process**:\n1️⃣ Monitor dedicated lab email inbox\n2️⃣ Extract email metadata (from, subject, date)\n3️⃣ Read PDF attachment (lab results)\n4️⃣ Parse PDF to extract:\n   - Patient demographics (name, DOB, MRN)\n   - Test metadata (collection date, ordering provider)\n   - Test results (test name, value)\n5️⃣ Lookup patient in Google Sheets (get phone, email)\n6️⃣ If patient not found → alert staff\n7️⃣ If patient found → merge data + call AI triage\n\n**Output**: Complete patient + lab context → AI Triage workflow\n\n**Email Filters**:\n- From: noreply@labcorp.com, results@questdiagnostics.com\n- Subject: \"Lab Results\"\n- Must have PDF attachment",
+        "height": 542,
+        "width": 389,
+        "color": 4
+      },
+      "id": "sticky-note-workflow-info",
+      "name": "Workflow Info",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        240,
+        600
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 📊 PDF Parsing Strategy\n\n**Challenge**: Lab PDFs have inconsistent formats\n\n**Approach**:\n1. Extract all text from PDF\n2. Use regex patterns to find:\n   - Patient Name: \"Patient Name: John Smith\"\n   - DOB: \"DOB: 05/15/1980\"\n   - MRN: \"MRN: 12345\" or \"Patient ID: 12345\"\n\n3. Extract test results:\n   - Common test names (Glucose, Hemoglobin, etc.)\n   - Numeric values with units\n   - Reference ranges (if available)\n\n**Limitations**:\n- Regex works for common formats\n- Complex PDFs may need manual review\n- Future: Use AI for more robust parsing\n\n**Fallback**:\nIf parsing fails → alert staff for manual entry",
+        "height": 542,
+        "width": 389,
+        "color": 5
+      },
+      "id": "sticky-note-pdf-parsing",
+      "name": "PDF Parsing Strategy",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        660,
+        600
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 🔍 Patient Lookup\n\n**Why**: Need patient's phone/email to send results\n\n**Lookup by**:\n1. Patient Name (from PDF)\n2. Match DOB if multiple patients with same name\n3. Match MRN if available\n\n**If patient found**:\n- Get: Phone, Email, Patient_ID, Last_Visit_Date\n- Merge with lab data\n- Send to AI triage\n\n**If patient NOT found**:\n- Alert staff via SMS\n- Log to Google Sheets for manual review\n- DO NOT send to AI (no patient contact info)\n\n**Common issues**:\n- Name spelling differences (\"Jon\" vs \"John\")\n- Multiple patients with same name\n- New patients not yet in database",
+        "height": 542,
+        "width": 389,
+        "color": 6
+      },
+      "id": "sticky-note-patient-lookup",
+      "name": "Patient Lookup",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1080,
+        600
+      ]
+    }
+  ],
+  "connections": {
+    "Monitor Lab Email Inbox": {
+      "main": [
+        [
+          {
+            "node": "Extract Email Metadata",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Email Metadata": {
+      "main": [
+        [
+          {
+            "node": "Read PDF Attachment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read PDF Attachment": {
+      "main": [
+        [
+          {
+            "node": "Parse Lab Results from PDF",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Lab Results from PDF": {
+      "main": [
+        [
+          {
+            "node": "Lookup Patient in Database",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lookup Patient in Database": {
+      "main": [
+        [
+          {
+            "node": "Patient Found?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Patient Found?": {
+      "main": [
+        [
+          {
+            "node": "Merge Patient Data",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Alert Staff - Patient Not Found",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Patient Data": {
+      "main": [
+        [
+          {
+            "node": "Call AI Triage Workflow",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 1,
+  "updatedAt": "2026-01-27T16:00:00.000Z",
+  "versionId": "1"
+}

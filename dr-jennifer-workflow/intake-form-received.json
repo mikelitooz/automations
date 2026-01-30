@@ -1,0 +1,385 @@
+{
+  "name": "Dr. Jennifer - Intake Form Receiver (Typeform → Athenahealth)",
+  "nodes": [
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "formId": {
+          "__rl": true,
+          "value": "={{ $env.TYPEFORM_FORM_ID }}",
+          "mode": "id"
+        },
+        "simplifyAnswers": true,
+        "onlyAnswers": false
+      },
+      "id": "typeform-trigger-001",
+      "name": "Typeform Form Submission",
+      "type": "n8n-nodes-base.typeformTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        240,
+        400
+      ],
+      "webhookId": "typeform-intake-webhook",
+      "credentials": {
+        "typeformOAuth2Api": {
+          "id": "typeform-credential",
+          "name": "Typeform OAuth2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract patient data from Typeform submission\nconst submission = $input.first().json;\n\n// Hidden fields (from URL parameters)\nconst hidden = submission.hidden || {};\n\n// Form answers (patient-entered data)\nconst answers = submission.answers || {};\n\n// Extract data with fallbacks\nconst patientData = {\n  // From hidden fields (tracking)\n  appointmentId: hidden.appointment_id || '',\n  appointmentDate: hidden.appointment_date || '',\n  appointmentTime: hidden.appointment_time || '',\n  phoneFromHidden: hidden.phone || '',\n  \n  // Demographics (from form)\n  fullName: answers['Full Name'] || answers['full_name'] || hidden.patient_name || '',\n  firstName: '',\n  lastName: '',\n  dateOfBirth: answers['Date of Birth'] || answers['date_of_birth'] || '',\n  gender: answers['Gender'] || answers['gender'] || '',\n  email: answers['Email'] || answers['email'] || '',\n  phone: answers['Phone'] || answers['phone'] || hidden.phone || '',\n  \n  // Address\n  streetAddress: answers['Street Address'] || answers['street_address'] || '',\n  city: answers['City'] || answers['city'] || '',\n  state: answers['State'] || answers['state'] || '',\n  zipCode: answers['ZIP Code'] || answers['zip_code'] || '',\n  \n  // Insurance\n  insuranceCompany: answers['Insurance Company'] || answers['insurance_company'] || hidden.insurance_company || '',\n  memberId: answers['Member ID'] || answers['member_id'] || hidden.member_id || '',\n  policyNumber: answers['Policy Number'] || answers['policy_number'] || '',\n  groupNumber: answers['Group Number'] || answers['group_number'] || '',\n  insurancePhone: answers['Insurance Phone'] || answers['insurance_phone'] || '',\n  \n  // Medical History\n  currentConditions: answers['Current Medical Conditions'] || answers['current_conditions'] || '',\n  pastSurgeries: answers['Past Surgeries'] || answers['past_surgeries'] || '',\n  familyHistory: answers['Family Medical History'] || answers['family_history'] || '',\n  \n  // Medications\n  takesMedications: answers['Do you take any medications?'] || answers['takes_medications'] || 'No',\n  medications: answers['Current Medications'] || answers['medications'] || '',\n  \n  // Allergies\n  hasAllergies: answers['Do you have any allergies?'] || answers['has_allergies'] || 'No',\n  allergies: answers['Allergies'] || answers['allergies'] || '',\n  \n  // Emergency Contact\n  emergencyContactName: answers['Emergency Contact Name'] || answers['emergency_name'] || '',\n  emergencyContactRelationship: answers['Emergency Contact Relationship'] || answers['emergency_relationship'] || '',\n  emergencyContactPhone: answers['Emergency Contact Phone'] || answers['emergency_phone'] || '',\n  \n  // Metadata\n  submittedAt: submission.submitted_at || new Date().toISOString(),\n  formId: submission.form_id || '',\n  responseId: submission.response_id || ''\n};\n\n// Split full name into first/last\nif (patientData.fullName) {\n  const nameParts = patientData.fullName.trim().split(' ');\n  patientData.firstName = nameParts[0] || '';\n  patientData.lastName = nameParts.slice(1).join(' ') || nameParts[0]; // Fallback to first name if no last name\n}\n\n// Validate required fields\nconst errors = [];\nif (!patientData.fullName) errors.push('Missing: Full Name');\nif (!patientData.dateOfBirth) errors.push('Missing: Date of Birth');\nif (!patientData.gender) errors.push('Missing: Gender');\nif (!patientData.phone) errors.push('Missing: Phone');\n\nreturn {\n  json: {\n    ...patientData,\n    validationErrors: errors,\n    isValid: errors.length === 0\n  }\n};"
+      },
+      "id": "extract-patient-data",
+      "name": "Extract Patient Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        460,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "validation-check",
+              "leftValue": "={{ $json.isValid }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-validation",
+      "name": "Data Valid?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        680,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Map Typeform data to Athenahealth FHIR Patient resource\nconst patient = $input.first().json;\n\n// Convert date of birth to FHIR format (YYYY-MM-DD)\nlet dobFormatted = patient.dateOfBirth;\nif (dobFormatted && dobFormatted.includes('/')) {\n  // Convert MM/DD/YYYY to YYYY-MM-DD\n  const parts = dobFormatted.split('/');\n  if (parts.length === 3) {\n    dobFormatted = `${parts[2]}-${parts[0].padStart(2, '0')}-${parts[1].padStart(2, '0')}`;\n  }\n}\n\n// Map gender to FHIR code\nconst genderMap = {\n  'Male': 'male',\n  'Female': 'female',\n  'Other': 'other',\n  'Prefer not to say': 'unknown'\n};\nconst genderCode = genderMap[patient.gender] || 'unknown';\n\n// Build FHIR Patient resource\nconst fhirPatient = {\n  resourceType: 'Patient',\n  identifier: [\n    {\n      system: 'http://dr-jennifer-practice.com/patient-id',\n      value: patient.appointmentId || patient.responseId\n    }\n  ],\n  name: [\n    {\n      use: 'official',\n      family: patient.lastName,\n      given: [patient.firstName],\n      text: patient.fullName\n    }\n  ],\n  telecom: [\n    {\n      system: 'phone',\n      value: patient.phone,\n      use: 'mobile'\n    },\n    {\n      system: 'email',\n      value: patient.email,\n      use: 'home'\n    }\n  ],\n  gender: genderCode,\n  birthDate: dobFormatted,\n  address: [\n    {\n      use: 'home',\n      type: 'both',\n      line: [patient.streetAddress],\n      city: patient.city,\n      state: patient.state,\n      postalCode: patient.zipCode,\n      country: 'US'\n    }\n  ],\n  contact: [\n    {\n      relationship: [\n        {\n          text: patient.emergencyContactRelationship\n        }\n      ],\n      name: {\n        text: patient.emergencyContactName\n      },\n      telecom: [\n        {\n          system: 'phone',\n          value: patient.emergencyContactPhone\n        }\n      ]\n    }\n  ]\n};\n\n// Build AllergyIntolerance resources (if patient has allergies)\nconst allergyResources = [];\nif (patient.hasAllergies === 'Yes' && patient.allergies) {\n  const allergyList = patient.allergies.split(',').map(a => a.trim()).filter(a => a);\n  allergyList.forEach((allergy, index) => {\n    allergyResources.push({\n      resourceType: 'AllergyIntolerance',\n      clinicalStatus: {\n        coding: [{\n          system: 'http://terminology.hl7.org/CodeSystem/allergyintolerance-clinical',\n          code: 'active'\n        }]\n      },\n      code: {\n        text: allergy\n      },\n      patient: {\n        reference: 'Patient/PLACEHOLDER' // Will be updated after patient creation\n      }\n    });\n  });\n}\n\n// Build MedicationStatement resources (if patient takes medications)\nconst medicationResources = [];\nif (patient.takesMedications === 'Yes' && patient.medications) {\n  const medList = patient.medications.split(',').map(m => m.trim()).filter(m => m);\n  medList.forEach((medication, index) => {\n    medicationResources.push({\n      resourceType: 'MedicationStatement',\n      status: 'active',\n      medicationCodeableConcept: {\n        text: medication\n      },\n      subject: {\n        reference: 'Patient/PLACEHOLDER' // Will be updated after patient creation\n      }\n    });\n  });\n}\n\n// Build Coverage resource (insurance)\nconst coverageResource = patient.insuranceCompany ? {\n  resourceType: 'Coverage',\n  status: 'active',\n  type: {\n    text: 'Health Insurance'\n  },\n  subscriber: {\n    reference: 'Patient/PLACEHOLDER'\n  },\n  beneficiary: {\n    reference: 'Patient/PLACEHOLDER'\n  },\n  payor: [\n    {\n      display: patient.insuranceCompany\n    }\n  ],\n  class: [\n    {\n      type: {\n        text: 'Member ID'\n      },\n      value: patient.memberId\n    },\n    {\n      type: {\n        text: 'Policy Number'\n      },\n      value: patient.policyNumber\n    },\n    {\n      type: {\n        text: 'Group Number'\n      },\n      value: patient.groupNumber\n    }\n  ]\n} : null;\n\nreturn {\n  json: {\n    originalPatientData: patient,\n    fhirPatient: fhirPatient,\n    fhirAllergies: allergyResources,\n    fhirMedications: medicationResources,\n    fhirCoverage: coverageResource,\n    resourceCount: {\n      patient: 1,\n      allergies: allergyResources.length,\n      medications: medicationResources.length,\n      coverage: coverageResource ? 1 : 0\n    }\n  }\n};"
+      },
+      "id": "map-to-fhir",
+      "name": "Map to FHIR Format",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        900,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.platform.athenahealth.com/fhir/r4/Patient",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "athenaHealthOAuth2Api",
+        "sendBody": true,
+        "contentType": "json",
+        "jsonBody": "={{ JSON.stringify($json.fhirPatient) }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/fhir+json"
+            },
+            {
+              "name": "Accept",
+              "value": "application/fhir+json"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "create-patient-athena",
+      "name": "Create Patient in Athenahealth",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1120,
+        300
+      ],
+      "notes": "Creates a new Patient resource in Athenahealth FHIR API.\n\nNote: In production, you should first search for existing patient to avoid duplicates.",
+      "credentials": {
+        "athenaHealthOAuth2Api": {
+          "id": "athenahealth-oauth2",
+          "name": "Athenahealth OAuth2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract patient ID from Athenahealth response\nconst athenaResponse = $input.first().json;\n\nlet patientId = '';\n\n// Response structure: { id: \"12345\", resourceType: \"Patient\", ... }\nif (athenaResponse.id) {\n  patientId = athenaResponse.id;\n} else if (athenaResponse.entry && athenaResponse.entry[0]) {\n  // Bundle response\n  patientId = athenaResponse.entry[0].resource.id;\n}\n\nconst originalData = $('Map to FHIR Format').first().json.originalPatientData;\n\nreturn {\n  json: {\n    athenaPatientId: patientId,\n    patientName: originalData.fullName,\n    appointmentId: originalData.appointmentId,\n    appointmentDate: originalData.appointmentDate,\n    appointmentTime: originalData.appointmentTime,\n    phone: originalData.phone,\n    athenaResponse: athenaResponse\n  }\n};"
+      },
+      "id": "extract-patient-id",
+      "name": "Extract Patient ID",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1340,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $env.GOOGLE_SHEET_ID }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Appointments",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Form_Completed": "Yes",
+            "Form_Completed_Date": "={{ new Date().toLocaleString('en-US', { timeZone: 'America/New_York' }) }}",
+            "Athenahealth_Patient_ID": "={{ $json.athenaPatientId }}"
+          },
+          "matchingColumns": [
+            "Patient_Name",
+            "Date",
+            "Time"
+          ]
+        },
+        "options": {}
+      },
+      "id": "update-sheet-completed",
+      "name": "Update Sheet: Form Completed",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.4,
+      "position": [
+        1560,
+        300
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "google-sheets-credential",
+          "name": "Google Sheets Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.twilio.com/2010-04-01/Accounts/={{ $credentials.twilioApi.accountSid }}/Messages.json",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "twilioApi",
+        "sendBody": true,
+        "contentType": "form-urlencoded",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "From",
+              "value": "={{ $env.TWILIO_PHONE_NUMBER }}"
+            },
+            {
+              "name": "To",
+              "value": "={{ $json.phone }}"
+            },
+            {
+              "name": "Body",
+              "value": "=✅ Thank you, {{ $json.patientName.split(' ')[0] }}!\n\nYour intake form has been received and your medical record has been updated.\n\nWe look forward to seeing you on {{ $json.appointmentDate }} at {{ $json.appointmentTime }}.\n\n- Dr. Jennifer's Office"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "send-confirmation-sms",
+      "name": "Send Confirmation SMS",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1780,
+        300
+      ],
+      "credentials": {
+        "twilioApi": {
+          "id": "twilio-credential",
+          "name": "Twilio Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Log validation error\nconst patient = $input.first().json;\n\nconsole.error('❌ Typeform submission validation failed');\nconsole.error('Errors:', patient.validationErrors);\nconsole.error('Patient data:', patient);\n\nreturn {\n  json: {\n    error: 'Validation failed',\n    errors: patient.validationErrors,\n    patientData: patient,\n    message: 'Form submission incomplete - manual review required'\n  }\n};"
+      },
+      "id": "log-validation-error",
+      "name": "Log Validation Error",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        900,
+        500
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 📥 Intake Form Receiver Workflow\n\n**Purpose**: Process Typeform submissions and push data to Athenahealth EMR\n\n**Trigger**: Typeform webhook (fires when patient submits form)\n\n**Process**:\n1️⃣ Extract patient data from Typeform response\n2️⃣ Validate required fields (name, DOB, gender, phone)\n3️⃣ Map to FHIR R4 format (Patient, Coverage, Allergies, Medications)\n4️⃣ Create patient record in Athenahealth via FHIR API\n5️⃣ Update Google Sheet with completion status\n6️⃣ Send confirmation SMS to patient\n\n**FHIR Resources Created**:\n- Patient (demographics, contact, address)\n- Coverage (insurance information)\n- AllergyIntolerance (if patient has allergies)\n- MedicationStatement (if patient takes medications)\n\n**Error Handling**:\n- Missing required fields → Log error, skip API call\n- Duplicate patient → See setup guide for search-before-create logic\n- API failure → Workflow fails, manual review required",
+        "height": 501,
+        "width": 389,
+        "color": 4
+      },
+      "id": "sticky-note-receiver-info",
+      "name": "Workflow Info",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        240,
+        640
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## ⚠️ Production Considerations\n\n**Before going live**:\n\n1. **Duplicate Patient Check**: Add a search step before creating patient to avoid duplicates. Search by name + DOB.\n\n2. **Error Notifications**: Add email/Slack alerts for failed submissions.\n\n3. **Data Retention**: Configure Typeform to delete responses after 30 days (HIPAA requirement).\n\n4. **Testing**: Use Athenahealth Preview environment first.\n\n5. **Monitoring**: Track success/failure rate in Google Sheet.\n\nSee `ATHENAHEALTH_API_INTEGRATION.md` for detailed guidance.",
+        "height": 411,
+        "width": 389,
+        "color": 6
+      },
+      "id": "sticky-note-production",
+      "name": "Production Notes",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        660,
+        640
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 🔐 Required Credentials\n\n**Typeform OAuth2**:\n- Scope: `forms:read`, `responses:read`, `webhooks:write`\n- Get from: Typeform → Settings → Developer Apps\n\n**Athenahealth OAuth2**:\n- Grant Type: Client Credentials\n- Token URL: `https://api.platform.athenahealth.com/oauth2/v1/token`\n- Scope: `patient/*.* athena/service/Athenanet.MDP.*`\n- Get credentials from Athenahealth Developer Portal\n\n**Twilio** & **Google Sheets**:\n- Reuse from Automation 1",
+        "height": 391,
+        "width": 389,
+        "color": 5
+      },
+      "id": "sticky-note-credentials",
+      "name": "Credentials",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1080,
+        640
+      ]
+    }
+  ],
+  "connections": {
+    "Typeform Form Submission": {
+      "main": [
+        [
+          {
+            "node": "Extract Patient Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Patient Data": {
+      "main": [
+        [
+          {
+            "node": "Data Valid?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Data Valid?": {
+      "main": [
+        [
+          {
+            "node": "Map to FHIR Format",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Log Validation Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Map to FHIR Format": {
+      "main": [
+        [
+          {
+            "node": "Create Patient in Athenahealth",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Patient in Athenahealth": {
+      "main": [
+        [
+          {
+            "node": "Extract Patient ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Patient ID": {
+      "main": [
+        [
+          {
+            "node": "Update Sheet: Form Completed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Sheet: Form Completed": {
+      "main": [
+        [
+          {
+            "node": "Send Confirmation SMS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 1,
+  "updatedAt": "2026-01-27T12:00:00.000Z",
+  "versionId": "1"
+}

@@ -1,0 +1,572 @@
+{
+  "name": "1. Multi-Platform Lead Scraper",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 24,
+              "triggerAtHour": 9
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Schedule Daily 9AM",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "platform",
+              "value": "linkedin"
+            },
+            {
+              "name": "linkedin_cookie",
+              "value": "YOUR_LINKEDIN_COOKIE_li_at"
+            },
+            {
+              "name": "twitter_api_key",
+              "value": "YOUR_TWITTER_BEARER_TOKEN"
+            },
+            {
+              "name": "outscraper_api_key",
+              "value": "YOUR_OUTSCRAPER_API_KEY_OPTIONAL"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "config-node",
+      "name": "Scraping Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [460, 300],
+      "notes": "Configure which platform to scrape and credentials. Options: linkedin, google_maps, apollo, reddit, twitter, facebook, instagram"
+    },
+    {
+      "parameters": {
+        "mode": "rules",
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "leftValue": "={{ $json.platform }}",
+                    "rightValue": "linkedin"
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "LinkedIn"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "leftValue": "={{ $json.platform }}",
+                    "rightValue": "google_maps"
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "Google Maps"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "leftValue": "={{ $json.platform }}",
+                    "rightValue": "apollo"
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "Apollo"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "leftValue": "={{ $json.platform }}",
+                    "rightValue": "reddit"
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "Reddit"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "leftValue": "={{ $json.platform }}",
+                    "rightValue": "twitter"
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "Twitter"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "leftValue": "={{ $json.platform }}",
+                    "rightValue": "facebook"
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "Facebook"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "leftValue": "={{ $json.platform }}",
+                    "rightValue": "instagram"
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "Instagram"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "platform-switch",
+      "name": "Platform Router",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// LinkedIn Sales Navigator Scraper using Puppeteer\n// IMPORTANT: This requires Puppeteer to be installed in your n8n instance\n// For n8n cloud: Use Execute Command node with npm install puppeteer first\n// For self-hosted: Install via: npm install puppeteer\n\nconst puppeteer = require('puppeteer');\n\nasync function scrapeLinkedIn(linkedinCookie) {\n  const browser = await puppeteer.launch({\n    headless: true,\n    args: [\n      '--no-sandbox',\n      '--disable-setuid-sandbox',\n      '--disable-dev-shm-usage',\n      '--disable-accelerated-2d-canvas',\n      '--disable-gpu'\n    ]\n  });\n\n  const page = await browser.newPage();\n\n  // Set user agent to avoid detection\n  await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');\n\n  // Set LinkedIn authentication cookie\n  await page.setCookie({\n    name: 'li_at',\n    value: linkedinCookie,\n    domain: '.linkedin.com',\n    path: '/',\n    httpOnly: true,\n    secure: true\n  });\n\n  // LinkedIn Sales Navigator search URL (customize your search)\n  // Target: Founders/CEOs in SaaS/E-commerce companies, 10-500 employees\n  const searchURL = 'https://www.linkedin.com/search/results/people/?keywords=founder%20OR%20ceo%20OR%20operations%20manager&origin=GLOBAL_SEARCH_HEADER';\n  \n  await page.goto(searchURL, { \n    waitUntil: 'networkidle2',\n    timeout: 30000 \n  });\n\n  // Random delay (anti-detection)\n  await new Promise(resolve => setTimeout(resolve, 2000 + Math.random() * 3000));\n\n  // Wait for search results to load\n  try {\n    await page.waitForSelector('.reusable-search__result-container', { timeout: 10000 });\n  } catch (error) {\n    console.log('LinkedIn search results not loaded:', error.message);\n    await browser.close();\n    return [];\n  }\n\n  // Extract lead data\n  const leads = await page.evaluate(() => {\n    const results = [];\n    const items = document.querySelectorAll('.reusable-search__result-container');\n\n    items.forEach((item, index) => {\n      if (index >= 50) return; // Limit to 50 results per session\n\n      try {\n        const nameElement = item.querySelector('.entity-result__title-text a span[aria-hidden=\"true\"]');\n        const titleElement = item.querySelector('.entity-result__primary-subtitle');\n        const companyElement = item.querySelector('.entity-result__secondary-subtitle');\n        const profileLinkElement = item.querySelector('.entity-result__title-text a');\n        const locationElement = item.querySelector('.entity-result__secondary-subtitle + div');\n\n        const name = nameElement?.innerText?.trim() || '';\n        const title = titleElement?.innerText?.trim() || '';\n        const company = companyElement?.innerText?.trim() || '';\n        const profileURL = profileLinkElement?.href || '';\n        const location = locationElement?.innerText?.trim() || '';\n\n        if (name && profileURL) {\n          results.push({\n            full_name: name,\n            job_title: title,\n            company_name: company,\n            linkedin_url: profileURL,\n            location: location,\n            source_platform: 'LinkedIn'\n          });\n        }\n      } catch (err) {\n        console.log('Error extracting item:', err);\n      }\n    });\n\n    return results;\n  });\n\n  await browser.close();\n  return leads;\n}\n\n// Execute scraping\nconst linkedinCookie = $input.first().json.linkedin_cookie;\n\nif (!linkedinCookie || linkedinCookie === 'YOUR_LINKEDIN_COOKIE_li_at') {\n  throw new Error('LinkedIn cookie (li_at) not configured. Get it from your browser cookies after logging into LinkedIn.');\n}\n\nconst leads = await scrapeLinkedIn(linkedinCookie);\n\nif (leads.length === 0) {\n  return [{ json: { error: 'No leads found. Check your LinkedIn session cookie or search criteria.' } }];\n}\n\nreturn leads.map(lead => ({ json: lead }));"
+      },
+      "id": "linkedin-scraper",
+      "name": "LinkedIn Puppeteer Scraper",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 100],
+      "notes": "Scrapes LinkedIn search results using Puppeteer. Requires valid li_at session cookie."
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Google Maps Local Business Scraper using Puppeteer\n// Targets local businesses for B2B outreach\n\nconst puppeteer = require('puppeteer');\n\nasync function scrapeGoogleMaps(searchQuery = 'SaaS companies near me') {\n  const browser = await puppeteer.launch({\n    headless: true,\n    args: ['--no-sandbox', '--disable-setuid-sandbox']\n  });\n\n  const page = await browser.newPage();\n  await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');\n\n  // Navigate to Google Maps search\n  const encodedQuery = encodeURIComponent(searchQuery);\n  await page.goto(`https://www.google.com/maps/search/${encodedQuery}`, {\n    waitUntil: 'networkidle2',\n    timeout: 30000\n  });\n\n  // Random delay\n  await new Promise(resolve => setTimeout(resolve, 3000 + Math.random() * 2000));\n\n  // Scroll to load more results\n  await page.evaluate(() => {\n    const scrollableDiv = document.querySelector('[role=\"feed\"]');\n    if (scrollableDiv) {\n      scrollableDiv.scrollBy(0, 2000);\n    }\n  });\n\n  await new Promise(resolve => setTimeout(resolve, 2000));\n\n  // Extract business data\n  const leads = await page.evaluate(() => {\n    const results = [];\n    const items = document.querySelectorAll('[role=\"article\"]');\n\n    items.forEach((item, index) => {\n      if (index >= 50) return;\n\n      try {\n        const nameElement = item.querySelector('[aria-label]');\n        const name = nameElement?.getAttribute('aria-label') || '';\n\n        // Extract address, phone, website from aria-label or nested elements\n        const detailsText = item.innerText || '';\n        const lines = detailsText.split('\\n').filter(l => l.trim());\n\n        const address = lines.find(l => l.match(/\\d+.*(?:St|Ave|Rd|Blvd|Dr|Way|Street|Avenue|Road|Boulevard|Drive)/i)) || '';\n        const phone = lines.find(l => l.match(/\\(\\d{3}\\)\\s?\\d{3}-\\d{4}/)) || '';\n        const website = lines.find(l => l.match(/https?:\\/\\//)) || '';\n        const rating = lines.find(l => l.match(/^\\d\\.\\d/)) || '';\n\n        if (name) {\n          results.push({\n            company_name: name,\n            location: address,\n            phone_number: phone,\n            company_website: website,\n            rating: rating,\n            source_platform: 'Google Maps'\n          });\n        }\n      } catch (err) {\n        console.log('Error extracting item:', err);\n      }\n    });\n\n    return results;\n  });\n\n  await browser.close();\n  return leads;\n}\n\n// Execute scraping\nconst leads = await scrapeGoogleMaps('digital marketing agencies near San Francisco');\n\nif (leads.length === 0) {\n  return [{ json: { error: 'No leads found from Google Maps' } }];\n}\n\nreturn leads.map(lead => ({ json: lead }));"
+      },
+      "id": "google-maps-scraper",
+      "name": "Google Maps Puppeteer Scraper",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 220],
+      "notes": "Scrapes local businesses from Google Maps. Customize search query in the code."
+    },
+    {
+      "parameters": {
+        "url": "https://api.apollo.io/v1/mixed_people/search",
+        "method": "POST",
+        "sendBody": true,
+        "contentType": "json",
+        "jsonBody": "={\n  \"api_key\": \"YOUR_APOLLO_API_KEY\",\n  \"q_organization_domains\": \"saas\",\n  \"page\": 1,\n  \"per_page\": 50,\n  \"person_titles\": [\"founder\", \"ceo\", \"operations manager\", \"coo\"]\n}",
+        "options": {}
+      },
+      "id": "apollo-scraper",
+      "name": "Apollo.io API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [900, 340],
+      "notes": "Apollo.io API fallback. Free tier: 50 contacts/month. Get API key from apollo.io"
+    },
+    {
+      "parameters": {
+        "url": "=https://www.reddit.com/r/{{ $json.subreddit || 'Entrepreneur' }}/search.json?q={{ encodeURIComponent($json.search_query || 'need automation OR manual processes OR hiring VA') }}&sort=relevance&t=month&limit=50",
+        "method": "GET",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "User-Agent",
+              "value": "Mozilla/5.0 (compatible; n8n-bot/1.0)"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "reddit-scraper",
+      "name": "Reddit JSON API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [900, 460],
+      "notes": "Scrapes Reddit for pain points. No API key needed. Subreddits: Entrepreneur, smallbusiness, startups"
+    },
+    {
+      "parameters": {
+        "url": "https://api.twitter.com/2/tweets/search/recent?query=SaaS%20OR%20automation%20OR%20%22manual%20processes%22%20-is:retweet&max_results=50&tweet.fields=author_id,created_at,public_metrics&expansions=author_id&user.fields=name,username,description,public_metrics",
+        "method": "GET",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $json.twitter_api_key }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "twitter-scraper",
+      "name": "Twitter API v2",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [900, 580],
+      "notes": "Twitter API free tier: 1500 tweets/month. Get bearer token from developer.twitter.com"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Facebook Groups Scraper using Puppeteer\n// CAUTION: Facebook aggressively blocks scrapers. Use sparingly.\n\nconst puppeteer = require('puppeteer');\n\nasync function scrapeFacebookGroups() {\n  const browser = await puppeteer.launch({\n    headless: true,\n    args: ['--no-sandbox', '--disable-setuid-sandbox']\n  });\n\n  const page = await browser.newPage();\n  await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');\n\n  // NOTE: Facebook requires login. This is a placeholder.\n  // You need to set Facebook cookies (c_user, xs) from your logged-in session\n  \n  // For now, return mock data with instructions\n  await browser.close();\n  \n  return [{\n    error: 'Facebook scraping requires authentication. Please use Facebook Groups API or manual scraping.',\n    instructions: 'Alternative: Export Facebook Group members list manually (Group Settings > Members > Download) and import to Google Sheets',\n    source_platform: 'Facebook'\n  }];\n}\n\nconst leads = await scrapeFacebookGroups();\nreturn leads.map(lead => ({ json: lead }));"
+      },
+      "id": "facebook-scraper",
+      "name": "Facebook Groups Scraper",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 700],
+      "notes": "Facebook scraping is complex due to auth. Consider manual export or Facebook Graph API."
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Instagram Business Profile Scraper using Puppeteer\n// CAUTION: Instagram has strict rate limits. Very slow scraping required.\n\nconst puppeteer = require('puppeteer');\n\nasync function scrapeInstagram() {\n  const browser = await puppeteer.launch({\n    headless: true,\n    args: ['--no-sandbox', '--disable-setuid-sandbox']\n  });\n\n  const page = await browser.newPage();\n  await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');\n\n  // NOTE: Instagram requires login and has aggressive anti-bot measures\n  // This is a placeholder implementation\n  \n  await browser.close();\n  \n  return [{\n    error: 'Instagram scraping requires authentication and is rate-limited.',\n    instructions: 'Alternative: Use Instagram Graph API (requires Business account) or Apify Instagram scrapers',\n    source_platform: 'Instagram'\n  }];\n}\n\nconst leads = await scrapeInstagram();\nreturn leads.map(lead => ({ json: lead }));"
+      },
+      "id": "instagram-scraper",
+      "name": "Instagram Business Scraper",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 820],
+      "notes": "Instagram scraping is complex. Consider Instagram Graph API or Apify scrapers."
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combinationMode": "mergeByPosition",
+        "options": {}
+      },
+      "id": "merge-results",
+      "name": "Merge All Sources",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [1120, 460],
+      "notes": "Combines leads from all scraping sources"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Clean, format, and deduplicate lead data\n// Normalizes data from different platforms into standard format\n\nconst leads = [];\nconst seenEmails = new Set();\nconst seenLinkedInURLs = new Set();\nconst seenCompanies = new Set();\n\n// Process all input items\n$input.all().forEach((item, index) => {\n  const data = item.json;\n  \n  // Skip error objects\n  if (data.error) {\n    console.log('Skipping error item:', data.error);\n    return;\n  }\n\n  // Extract and normalize fields\n  let firstName = '';\n  let lastName = '';\n  let fullName = data.full_name || data.name || '';\n  \n  // Split full name into first/last if needed\n  if (fullName && !data.first_name) {\n    const nameParts = fullName.trim().split(/\\s+/);\n    firstName = nameParts[0] || '';\n    lastName = nameParts.slice(1).join(' ') || '';\n  } else {\n    firstName = data.first_name || '';\n    lastName = data.last_name || '';\n    fullName = `${firstName} ${lastName}`.trim();\n  }\n\n  const companyName = data.company_name || data.organization?.name || '';\n  const email = data.email_address || data.email || '';\n  const linkedInURL = data.linkedin_url || '';\n  const sourcePlatform = data.source_platform || 'Unknown';\n\n  // Deduplication logic\n  const companyKey = companyName.toLowerCase().trim();\n  \n  // Skip if duplicate email\n  if (email && seenEmails.has(email)) {\n    console.log(`Duplicate email skipped: ${email}`);\n    return;\n  }\n  \n  // Skip if duplicate LinkedIn URL\n  if (linkedInURL && seenLinkedInURLs.has(linkedInURL)) {\n    console.log(`Duplicate LinkedIn URL skipped: ${linkedInURL}`);\n    return;\n  }\n  \n  // Skip if duplicate company + name (likely same person)\n  const personKey = `${companyKey}|${fullName.toLowerCase()}`;\n  if (seenCompanies.has(personKey)) {\n    console.log(`Duplicate person skipped: ${fullName} at ${companyName}`);\n    return;\n  }\n\n  // Mark as seen\n  if (email) seenEmails.add(email);\n  if (linkedInURL) seenLinkedInURLs.add(linkedInURL);\n  if (companyName && fullName) seenCompanies.add(personKey);\n\n  // Build standardized lead object\n  const lead = {\n    lead_id: `LEAD-${new Date().getFullYear()}-${String(leads.length + 1).padStart(4, '0')}`,\n    first_name: firstName,\n    last_name: lastName,\n    full_name: fullName,\n    company_name: companyName,\n    job_title: data.job_title || data.title || '',\n    industry: data.industry || 'Unknown',\n    location: data.location || `${data.city || ''}, ${data.state || ''}`.replace(', ,', ''),\n    source_platform: sourcePlatform,\n    scrape_date: new Date().toISOString().split('T')[0],\n    email_address: email,\n    email_status: email ? 'Valid' : 'Not Found',\n    phone_number: data.phone_number || data.phone_numbers?.[0] || '',\n    linkedin_url: linkedInURL,\n    company_website: data.company_website || data.organization?.website_url || data.website || '',\n    company_size: data.company_size || data.organization?.estimated_num_employees || null,\n    lead_score: null,\n    qualification_status: 'Pending',\n    qualification_notes: '',\n    email_subject: '',\n    email_body: '',\n    email_campaign_status: 'Draft',\n    pain_points: data.pain_points || '',\n    recent_activity: data.recent_activity || ''\n  };\n\n  // Data quality check: require minimum fields\n  if (!lead.full_name || !lead.company_name) {\n    console.log('Skipping lead with missing required fields:', lead);\n    return;\n  }\n\n  leads.push(lead);\n});\n\nconsole.log(`Processed ${$input.all().length} items, kept ${leads.length} unique leads`);\n\nif (leads.length === 0) {\n  return [{ json: { error: 'No valid leads after deduplication. All items were duplicates or incomplete.' } }];\n}\n\nreturn leads.map(lead => ({ json: lead }));"
+      },
+      "id": "clean-dedupe",
+      "name": "Clean & Deduplicate",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1340, 460],
+      "notes": "Removes duplicates by email, LinkedIn URL, or company+name combination"
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "YOUR_GOOGLE_SHEET_ID"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "id",
+          "value": "Raw Leads"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Lead ID": "={{ $json.lead_id }}",
+            "First Name": "={{ $json.first_name }}",
+            "Last Name": "={{ $json.last_name }}",
+            "Full Name": "={{ $json.full_name }}",
+            "Company Name": "={{ $json.company_name }}",
+            "Job Title": "={{ $json.job_title }}",
+            "Industry": "={{ $json.industry }}",
+            "Location": "={{ $json.location }}",
+            "Source Platform": "={{ $json.source_platform }}",
+            "Scrape Date": "={{ $json.scrape_date }}",
+            "Email Address": "={{ $json.email_address }}",
+            "Email Status": "={{ $json.email_status }}",
+            "Phone Number": "={{ $json.phone_number }}",
+            "LinkedIn URL": "={{ $json.linkedin_url }}",
+            "Company Website": "={{ $json.company_website }}",
+            "Company Size": "={{ $json.company_size }}",
+            "Lead Score": "={{ $json.lead_score }}",
+            "Qualification Status": "={{ $json.qualification_status }}"
+          }
+        },
+        "options": {}
+      },
+      "id": "append-sheets",
+      "name": "Append to Raw Leads",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [1560, 460],
+      "notes": "Appends deduplicated leads to Google Sheets"
+    }
+  ],
+  "connections": {
+    "Schedule Daily 9AM": {
+      "main": [
+        [
+          {
+            "node": "Scraping Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Scraping Config": {
+      "main": [
+        [
+          {
+            "node": "Platform Router",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Platform Router": {
+      "main": [
+        [
+          {
+            "node": "LinkedIn Puppeteer Scraper",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Google Maps Puppeteer Scraper",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Apollo.io API",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Reddit JSON API",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Twitter API v2",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Facebook Groups Scraper",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Instagram Business Scraper",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "LinkedIn Puppeteer Scraper": {
+      "main": [
+        [
+          {
+            "node": "Merge All Sources",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Maps Puppeteer Scraper": {
+      "main": [
+        [
+          {
+            "node": "Merge All Sources",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Apollo.io API": {
+      "main": [
+        [
+          {
+            "node": "Merge All Sources",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reddit JSON API": {
+      "main": [
+        [
+          {
+            "node": "Merge All Sources",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Twitter API v2": {
+      "main": [
+        [
+          {
+            "node": "Merge All Sources",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Facebook Groups Scraper": {
+      "main": [
+        [
+          {
+            "node": "Merge All Sources",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Instagram Business Scraper": {
+      "main": [
+        [
+          {
+            "node": "Merge All Sources",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge All Sources": {
+      "main": [
+        [
+          {
+            "node": "Clean & Deduplicate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clean & Deduplicate": {
+      "main": [
+        [
+          {
+            "node": "Append to Raw Leads",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 0,
+  "updatedAt": "2025-01-04T00:00:00.000Z",
+  "versionId": "2"
+}

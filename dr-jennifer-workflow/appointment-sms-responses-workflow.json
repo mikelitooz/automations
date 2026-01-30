@@ -1,0 +1,501 @@
+{
+  "name": "Dr. Jennifer - SMS Responses (Inbound)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "appointment-sms-reply",
+        "options": {
+          "rawBody": true
+        }
+      },
+      "id": "webhook-trigger",
+      "name": "Twilio Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "webhookId": "appointment-sms-reply"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse Twilio webhook data\nconst body = $input.first().json.body;\n\n// Twilio sends form-encoded data, parse it\nlet twilioData = {};\nif (typeof body === 'string') {\n  const params = new URLSearchParams(body);\n  twilioData = {\n    from: params.get('From'),\n    to: params.get('To'),\n    body: params.get('Body'),\n    messageSid: params.get('MessageSid')\n  };\n} else {\n  twilioData = body;\n}\n\n// Normalize patient response\nconst messageBody = twilioData.body.trim().toUpperCase();\nlet responseType = 'unknown';\n\nif (messageBody === '1' || messageBody.includes('CONFIRM')) {\n  responseType = 'confirm';\n} else if (messageBody === '2' || messageBody.includes('CANCEL')) {\n  responseType = 'cancel';\n} else if (messageBody === '3' || messageBody.includes('RESCHEDULE')) {\n  responseType = 'reschedule';\n}\n\nreturn [{\n  json: {\n    patientPhone: twilioData.from,\n    responseType,\n    originalMessage: twilioData.body,\n    receivedAt: new Date().toISOString(),\n    messageSid: twilioData.messageSid\n  }\n}];"
+      },
+      "id": "code-parse-response",
+      "name": "Parse SMS Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "",
+          "cachedResultName": "Appointment Schedule"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gid=0",
+          "cachedResultName": "Appointments"
+        },
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "Phone",
+              "lookupValue": "={{ $json.patientPhone }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "google-sheets-find-appointment",
+      "name": "Find Patient Appointment",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.4,
+      "position": [680, 300],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "PLACEHOLDER",
+          "name": "Google Sheets Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $('Parse SMS Response').item.json.responseType }}",
+                    "rightValue": "confirm",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "confirm"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $('Parse SMS Response').item.json.responseType }}",
+                    "rightValue": "cancel",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "cancel"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $('Parse SMS Response').item.json.responseType }}",
+                    "rightValue": "reschedule",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "reschedule"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "switch-response-type",
+      "name": "Route by Response",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.1,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "",
+          "cachedResultName": "Appointment Schedule"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gid=0",
+          "cachedResultName": "Appointments"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Confirmed": "Yes",
+            "Confirmed_At": "={{ $now.toISO() }}"
+          },
+          "matchingColumns": ["Phone", "Date"],
+          "schema": []
+        },
+        "options": {}
+      },
+      "id": "google-sheets-confirm",
+      "name": "Mark as Confirmed",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.4,
+      "position": [1120, 120],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "PLACEHOLDER",
+          "name": "Google Sheets Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fromNumber": "={{ $env.TWILIO_PHONE_NUMBER }}",
+        "toNumber": "={{ $('Parse SMS Response').item.json.patientPhone }}",
+        "message": "=✅ Confirmed! Your appointment on {{ $json.Date }} at {{ $json.Time }} is set. See you then!",
+        "options": {}
+      },
+      "id": "twilio-confirm-reply",
+      "name": "Send Confirmation",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [1340, 120],
+      "credentials": {
+        "twilioApi": {
+          "id": "PLACEHOLDER",
+          "name": "Twilio Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "",
+          "cachedResultName": "Appointment Schedule"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gid=0",
+          "cachedResultName": "Appointments"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Status": "CANCELLED",
+            "Cancelled_At": "={{ $now.toISO() }}",
+            "Available_For_Waitlist": "Yes"
+          },
+          "matchingColumns": ["Phone", "Date"],
+          "schema": []
+        },
+        "options": {}
+      },
+      "id": "google-sheets-cancel",
+      "name": "Mark as Cancelled",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.4,
+      "position": [1120, 300],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "PLACEHOLDER",
+          "name": "Google Sheets Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "",
+          "cachedResultName": "Appointment Schedule"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gid=0",
+          "cachedResultName": "Waitlist"
+        },
+        "filtersUI": {
+          "values": []
+        },
+        "options": {
+          "rangeDefinition": "detectAutomatically"
+        }
+      },
+      "id": "google-sheets-get-waitlist",
+      "name": "Get Waitlist",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.4,
+      "position": [1340, 300],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "PLACEHOLDER",
+          "name": "Google Sheets Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fromNumber": "={{ $env.TWILIO_PHONE_NUMBER }}",
+        "toNumber": "={{ $json.Phone }}",
+        "message": "=Opening available! {{ $('Find Patient Appointment').item.json.Date }} at {{ $('Find Patient Appointment').item.json.Time }} with Dr. {{ $('Find Patient Appointment').item.json.Doctor_Name }}. Want it? Reply YES to claim this slot.",
+        "options": {}
+      },
+      "id": "twilio-waitlist-notify",
+      "name": "Notify Waitlist",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [1560, 300],
+      "credentials": {
+        "twilioApi": {
+          "id": "PLACEHOLDER",
+          "name": "Twilio Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fromNumber": "={{ $env.TWILIO_PHONE_NUMBER }}",
+        "toNumber": "={{ $('Parse SMS Response').item.json.patientPhone }}",
+        "message": "=Your appointment has been cancelled. We've offered your slot to our waitlist. Need to rebook? Call us at {{ $json.Office_Phone }}",
+        "options": {}
+      },
+      "id": "twilio-cancel-reply",
+      "name": "Send Cancellation",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [1780, 240],
+      "credentials": {
+        "twilioApi": {
+          "id": "PLACEHOLDER",
+          "name": "Twilio Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fromNumber": "={{ $env.TWILIO_PHONE_NUMBER }}",
+        "toNumber": "={{ $('Parse SMS Response').item.json.patientPhone }}",
+        "message": "=Pick a new time that works for you: {{ $json.Calendly_Link || 'https://calendly.com/drjennifer' }}\n\nOr call us at {{ $json.Office_Phone }} and we'll help you reschedule.",
+        "options": {}
+      },
+      "id": "twilio-reschedule-reply",
+      "name": "Send Reschedule Link",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [1120, 480],
+      "credentials": {
+        "twilioApi": {
+          "id": "PLACEHOLDER",
+          "name": "Twilio Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "=<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Response>\n  <Message>Thank you! Your response has been received.</Message>\n</Response>",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "text/xml"
+              }
+            ]
+          }
+        }
+      },
+      "id": "respond-to-webhook",
+      "name": "Respond to Twilio",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1780, 480]
+    }
+  ],
+  "connections": {
+    "Twilio Webhook": {
+      "main": [
+        [
+          {
+            "node": "Parse SMS Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse SMS Response": {
+      "main": [
+        [
+          {
+            "node": "Find Patient Appointment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find Patient Appointment": {
+      "main": [
+        [
+          {
+            "node": "Route by Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route by Response": {
+      "main": [
+        [
+          {
+            "node": "Mark as Confirmed",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Mark as Cancelled",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send Reschedule Link",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark as Confirmed": {
+      "main": [
+        [
+          {
+            "node": "Send Confirmation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Confirmation": {
+      "main": [
+        [
+          {
+            "node": "Respond to Twilio",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark as Cancelled": {
+      "main": [
+        [
+          {
+            "node": "Get Waitlist",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Waitlist": {
+      "main": [
+        [
+          {
+            "node": "Notify Waitlist",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notify Waitlist": {
+      "main": [
+        [
+          {
+            "node": "Send Cancellation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Cancellation": {
+      "main": [
+        [
+          {
+            "node": "Respond to Twilio",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Reschedule Link": {
+      "main": [
+        [
+          {
+            "node": "Respond to Twilio",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 1,
+  "updatedAt": "2025-10-20T00:00:00.000Z",
+  "versionId": "1"
+}

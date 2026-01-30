@@ -1,0 +1,573 @@
+{
+  "name": "Dr. Jennifer - Lab Results Notifier",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "workflow-trigger-notifier",
+      "name": "When Called by Another Workflow",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [
+        240,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "check-normal",
+              "leftValue": "={{ $json.decision }}",
+              "rightValue": "NORMAL",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "route-by-decision",
+      "name": "Route by Decision",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [
+        460,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Prepare normal results notification for patient\nconst data = $input.first().json;\nconst patient = data.patientData.patient;\nconst labOrder = data.patientData.labOrder;\nconst normalTests = data.patientData.normalTests;\n\n// Build patient-friendly test summary\nconst testSummary = normalTests.map(test => \n  `• ${test.testName}: ${test.value} ${test.referenceRange?.units || ''} (normal)`\n).join('\\n');\n\n// Generate secure link to view full results\n// In production, this would be a time-limited token to patient portal\nconst secureLink = process.env.PATIENT_PORTAL_URL || 'https://portal.drjennifer.com/results';\nconst resultId = `LAB-${patient.id}-${Date.now()}`;\nconst fullLink = `${secureLink}?id=${resultId}&token=${Buffer.from(resultId).toString('base64')}`;\n\n// Build SMS message\nconst smsMessage = `Hi ${patient.name.split(' ')[0]}, your lab results from ${labOrder.collectionDate || 'recent visit'} are ready.\n\n✅ Everything looks normal!\n\nView detailed results: ${fullLink}\n\nNext steps: None needed. Continue current medications.\n\nQuestions? Reply to this message or call us: ${process.env.OFFICE_PHONE || '(555) 555-1234'}`;\n\n// Build email message (HTML)\nconst emailSubject = `Your Lab Results Are Ready - All Normal`;\nconst emailBody = `<html>\n<body style=\"font-family: Arial, sans-serif; line-height: 1.6; color: #333;\">\n  <div style=\"max-width: 600px; margin: 0 auto; padding: 20px;\">\n    <h2 style=\"color: #2c5282;\">Lab Results: All Normal ✅</h2>\n    \n    <p>Hi ${patient.name},</p>\n    \n    <p>Your lab results from ${labOrder.collectionDate || 'your recent visit'} are ready.</p>\n    \n    <div style=\"background: #d4edda; border-left: 4px solid #28a745; padding: 15px; margin: 20px 0;\">\n      <strong style=\"color: #155724;\">Good news! All your test results are within normal range.</strong>\n    </div>\n    \n    <h3>Test Summary:</h3>\n    <ul>\n${normalTests.map(test => \n  `      <li>${test.testName}: ${test.value} ${test.referenceRange?.units || ''} <span style=\"color: #28a745;\">(normal range: ${test.referenceRange?.normalMin}-${test.referenceRange?.normalMax})</span></li>`\n).join('\\n')}\n    </ul>\n    \n    <h3>Next Steps:</h3>\n    <p>No action needed. Continue your current medications as prescribed.</p>\n    \n    <p>\n      <a href=\"${fullLink}\" style=\"display: inline-block; background: #2c5282; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; margin: 10px 0;\">View Full Results</a>\n    </p>\n    \n    <p style=\"font-size: 12px; color: #666; margin-top: 30px;\">\n      <strong>Questions?</strong> Reply to this email or call us at ${process.env.OFFICE_PHONE || '(555) 555-1234'}\n    </p>\n    \n    <p style=\"font-size: 11px; color: #999; margin-top: 20px;\">\n      This message contains confidential medical information. If you received this in error, please delete immediately.\n    </p>\n  </div>\n</body>\n</html>`;\n\nreturn {\n  json: {\n    patient: patient,\n    smsMessage: smsMessage,\n    emailSubject: emailSubject,\n    emailBody: emailBody,\n    secureLink: fullLink,\n    resultId: resultId,\n    \n    // For logging\n    decision: data.decision,\n    reasoning: data.reasoning,\n    testCount: normalTests.length\n  }\n};"
+      },
+      "id": "prepare-normal-notification",
+      "name": "Prepare Normal Results Message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        680,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.twilio.com/2010-04-01/Accounts/={{ $credentials.twilioApi.accountSid }}/Messages.json",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "twilioApi",
+        "sendBody": true,
+        "contentType": "form-urlencoded",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "From",
+              "value": "={{ $env.TWILIO_OFFICE_PHONE_NUMBER }}"
+            },
+            {
+              "name": "To",
+              "value": "={{ $json.patient.phone }}"
+            },
+            {
+              "name": "Body",
+              "value": "={{ $json.smsMessage }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "send-normal-sms",
+      "name": "Send SMS to Patient",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        900,
+        200
+      ],
+      "credentials": {
+        "twilioApi": {
+          "id": "twilio-credential",
+          "name": "Twilio Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $env.OFFICE_EMAIL || 'noreply@drjennifer.com' }}",
+        "toEmail": "={{ $('Prepare Normal Results Message').item.json.patient.email }}",
+        "subject": "={{ $('Prepare Normal Results Message').item.json.emailSubject }}",
+        "emailType": "html",
+        "message": "={{ $('Prepare Normal Results Message').item.json.emailBody }}",
+        "options": {}
+      },
+      "id": "send-normal-email",
+      "name": "Send Email to Patient",
+      "type": "n8n-nodes-base.send",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        200
+      ],
+      "credentials": {
+        "smtp": {
+          "id": "office-email-credential",
+          "name": "Office Email SMTP"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $env.GOOGLE_SHEET_ID }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Lab_Results",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Result_ID": "={{ $('Prepare Normal Results Message').item.json.resultId }}",
+            "Patient_Name": "={{ $('Prepare Normal Results Message').item.json.patient.name }}",
+            "Patient_ID": "={{ $('Prepare Normal Results Message').item.json.patient.id }}",
+            "Test_Date": "={{ $('Route by Decision').item.json.patientData.labOrder.collectionDate }}",
+            "Tests_Ordered": "={{ $('Route by Decision').item.json.patientData.testCount }} tests",
+            "Decision": "={{ $('Prepare Normal Results Message').item.json.decision }}",
+            "AI_Reasoning": "={{ $('Prepare Normal Results Message').item.json.reasoning }}",
+            "Patient_Notified": "Yes - SMS + Email",
+            "Notified_Date": "={{ new Date().toLocaleString('en-US', { timeZone: 'America/New_York' }) }}",
+            "Doctor_Reviewed_By": "N/A - Auto-notified",
+            "Critical_Flags": "",
+            "Notes": "All values normal"
+          },
+          "matchingColumns": []
+        },
+        "options": {}
+      },
+      "id": "log-normal-results",
+      "name": "Log to Google Sheets",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.4,
+      "position": [
+        1340,
+        200
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "google-sheets-credential",
+          "name": "Google Sheets Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Prepare abnormal results for doctor review via Slack\nconst data = $input.first().json;\nconst patient = data.patientData.patient;\nconst labOrder = data.patientData.labOrder;\nconst abnormalTests = data.patientData.abnormalTests;\nconst normalTests = data.patientData.normalTests;\n\nconst slackMessage = {\n  channel: process.env.SLACK_LAB_CHANNEL || '#lab-results',\n  text: `⚠️ Abnormal Lab Results - Doctor Review Needed`,\n  blocks: [\n    {\n      type: 'header',\n      text: {\n        type: 'plain_text',\n        text: '⚠️ Abnormal Lab Results - Review Needed'\n      }\n    },\n    {\n      type: 'section',\n      fields: [\n        {\n          type: 'mrkdwn',\n          text: `*Patient:*\\n${patient.name}`\n        },\n        {\n          type: 'mrkdwn',\n          text: `*Patient ID:*\\n${patient.id}`\n        },\n        {\n          type: 'mrkdwn',\n          text: `*Collection Date:*\\n${labOrder.collectionDate || 'Unknown'}`\n        },\n        {\n          type: 'mrkdwn',\n          text: `*Ordering Provider:*\\n${labOrder.orderingProvider}`\n        }\n      ]\n    },\n    {\n      type: 'section',\n      text: {\n        type: 'mrkdwn',\n        text: `*⚠️ Abnormal Values (${abnormalTests.length}):*\\n${abnormalTests.map(t => `• ${t.interpretation}`).join('\\n')}`\n      }\n    },\n    {\n      type: 'section',\n      text: {\n        type: 'mrkdwn',\n        text: `*✅ Normal Values (${normalTests.length}):*\\n${normalTests.map(t => `• ${t.testName}: ${t.value} ${t.referenceRange?.units || ''}`).join('\\n')}`\n      }\n    },\n    {\n      type: 'section',\n      text: {\n        type: 'mrkdwn',\n        text: `*AI Analysis:*\\n${data.reasoning}`\n      }\n    },\n    {\n      type: 'section',\n      text: {\n        type: 'mrkdwn',\n        text: `*Recommended Action:*\\n${data.recommendedAction}`\n      }\n    },\n    {\n      type: 'section',\n      text: {\n        type: 'mrkdwn',\n        text: `*AI Suggested Patient Message:*\\n"${data.patientMessage}"`\n      }\n    },\n    {\n      type: 'divider'\n    },\n    {\n      type: 'context',\n      elements: [\n        {\n          type: 'mrkdwn',\n          text: `Patient Contact: ${patient.phone || 'N/A'} | ${patient.email || 'N/A'}`\n        }\n      ]\n    }\n  ]\n};\n\nreturn {\n  json: {\n    slackMessage: slackMessage,\n    \n    // Pass through for logging\n    patient: patient,\n    decision: data.decision,\n    reasoning: data.reasoning,\n    abnormalCount: abnormalTests.length\n  }\n};"
+      },
+      "id": "prepare-abnormal-slack",
+      "name": "Prepare Slack Review Message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        680,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "post",
+        "channel": "={{ $json.slackMessage.channel }}",
+        "text": "={{ $json.slackMessage.text }}",
+        "blocksUi": {
+          "blocksValues": "={{ JSON.stringify($json.slackMessage.blocks) }}"
+        },
+        "otherOptions": {}
+      },
+      "id": "send-abnormal-slack",
+      "name": "Send Slack to Doctor",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.2,
+      "position": [
+        900,
+        400
+      ],
+      "credentials": {
+        "slackApi": {
+          "id": "slack-api-credential",
+          "name": "Slack API"
+        }
+      },
+      "notes": "Doctor reviews abnormal results in Slack\nCan approve AI suggested message or customize"
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $env.GOOGLE_SHEET_ID }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Lab_Results",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Result_ID": "=ABNORMAL-{{ $('Prepare Slack Review Message').item.json.patient.id }}-{{ Date.now() }}",
+            "Patient_Name": "={{ $('Prepare Slack Review Message').item.json.patient.name }}",
+            "Patient_ID": "={{ $('Prepare Slack Review Message').item.json.patient.id }}",
+            "Test_Date": "={{ $('Route by Decision').item.json.patientData.labOrder.collectionDate }}",
+            "Tests_Ordered": "={{ $('Route by Decision').item.json.patientData.testCount }} tests",
+            "Decision": "={{ $('Prepare Slack Review Message').item.json.decision }}",
+            "AI_Reasoning": "={{ $('Prepare Slack Review Message').item.json.reasoning }}",
+            "Patient_Notified": "Pending doctor review",
+            "Notified_Date": "",
+            "Doctor_Reviewed_By": "Pending",
+            "Critical_Flags": "",
+            "Notes": "{{ $('Prepare Slack Review Message').item.json.abnormalCount }} abnormal values"
+          },
+          "matchingColumns": []
+        },
+        "options": {}
+      },
+      "id": "log-abnormal-results",
+      "name": "Log Abnormal Results",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.4,
+      "position": [
+        1120,
+        400
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "google-sheets-credential",
+          "name": "Google Sheets Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Prepare CRITICAL result escalation\nconst data = $input.first().json;\nconst patient = data.patientData.patient;\nconst labOrder = data.patientData.labOrder;\nconst criticalTests = data.patientData.criticalTests;\nconst concerningFindings = data.concerningFindings;\n\n// Build urgent SMS to staff\nconst staffSMS = `🚨🚨🚨 CRITICAL LAB RESULT 🚨🚨🚨\n\nPatient: ${patient.name}\nPhone: ${patient.phone || 'N/A'}\nPatient ID: ${patient.id}\n\n${criticalTests.map(t => t.interpretation).join('\\n')}\n\nIMMEDIATE ACTION REQUIRED\nCall patient NOW - ${data.urgencyLevel === 'immediate' ? 'life-threatening emergency' : 'urgent medical attention needed'}\n\nOrdering Provider: ${labOrder.orderingProvider}`;\n\n// Build Slack critical alert\nconst slackAlert = {\n  channel: process.env.SLACK_URGENT_CHANNEL || '#critical-labs',\n  text: `🚨 CRITICAL LAB RESULT - IMMEDIATE ACTION REQUIRED`,\n  blocks: [\n    {\n      type: 'header',\n      text: {\n        type: 'plain_text',\n        text: '🚨🚨🚨 CRITICAL LAB RESULT 🚨🚨🚨'\n      }\n    },\n    {\n      type: 'section',\n      fields: [\n        {\n          type: 'mrkdwn',\n          text: `*Patient:*\\n${patient.name}`\n        },\n        {\n          type: 'mrkdwn',\n          text: `*Phone:*\\n${patient.phone || 'N/A'}`\n        },\n        {\n          type: 'mrkdwn',\n          text: `*Patient ID:*\\n${patient.id}`\n        },\n        {\n          type: 'mrkdwn',\n          text: `*Urgency:*\\n${data.urgencyLevel.toUpperCase()}`\n        }\n      ]\n    },\n    {\n      type: 'section',\n      text: {\n        type: 'mrkdwn',\n        text: `*🚨 Critical Values (${criticalTests.length}):*\\n${criticalTests.map(t => `• ${t.interpretation}`).join('\\n')}`\n      }\n    },\n    {\n      type: 'section',\n      text: {\n        type: 'mrkdwn',\n        text: `*AI Analysis:*\\n${data.reasoning}`\n      }\n    },\n    {\n      type: 'section',\n      text: {\n        type: 'mrkdwn',\n        text: `*Recommended Action:*\\n${data.recommendedAction}`\n      }\n    },\n    {\n      type: 'divider'\n    },\n    {\n      type: 'context',\n      elements: [\n        {\n          type: 'mrkdwn',\n          text: `⚠️ *IMMEDIATE ACTION: Call patient NOW. This is a life-threatening lab value.*`\n        }\n      ]\n    }\n  ]\n};\n\nreturn {\n  json: {\n    staffSMS: staffSMS,\n    slackAlert: slackAlert,\n    \n    // For phone call\n    doctorPhone: process.env.DOCTOR_ON_CALL_PHONE || process.env.STAFF_ALERT_PHONE,\n    \n    // Pass through for logging\n    patient: patient,\n    decision: data.decision,\n    reasoning: data.reasoning,\n    criticalCount: criticalTests.length,\n    concerningFindings: concerningFindings\n  }\n};"
+      },
+      "id": "prepare-critical-escalation",
+      "name": "Prepare Critical Escalation",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        680,
+        600
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.twilio.com/2010-04-01/Accounts/={{ $credentials.twilioApi.accountSid }}/Messages.json",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "twilioApi",
+        "sendBody": true,
+        "contentType": "form-urlencoded",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "From",
+              "value": "={{ $env.TWILIO_OFFICE_PHONE_NUMBER }}"
+            },
+            {
+              "name": "To",
+              "value": "={{ $env.STAFF_ALERT_PHONE }}"
+            },
+            {
+              "name": "Body",
+              "value": "={{ $json.staffSMS }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "send-critical-sms-staff",
+      "name": "Send Urgent SMS to Staff",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        900,
+        600
+      ],
+      "credentials": {
+        "twilioApi": {
+          "id": "twilio-credential",
+          "name": "Twilio Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "post",
+        "channel": "={{ $json.slackAlert.channel }}",
+        "text": "={{ $json.slackAlert.text }}",
+        "blocksUi": {
+          "blocksValues": "={{ JSON.stringify($json.slackAlert.blocks) }}"
+        },
+        "otherOptions": {}
+      },
+      "id": "send-critical-slack",
+      "name": "Send Critical Slack Alert",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.2,
+      "position": [
+        1120,
+        600
+      ],
+      "credentials": {
+        "slackApi": {
+          "id": "slack-api-credential",
+          "name": "Slack API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $env.GOOGLE_SHEET_ID }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Lab_Results",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Result_ID": "=CRITICAL-{{ $('Prepare Critical Escalation').item.json.patient.id }}-{{ Date.now() }}",
+            "Patient_Name": "={{ $('Prepare Critical Escalation').item.json.patient.name }}",
+            "Patient_ID": "={{ $('Prepare Critical Escalation').item.json.patient.id }}",
+            "Test_Date": "={{ $('Route by Decision').item.json.patientData.labOrder.collectionDate }}",
+            "Tests_Ordered": "={{ $('Route by Decision').item.json.patientData.testCount }} tests",
+            "Decision": "={{ $('Prepare Critical Escalation').item.json.decision }}",
+            "AI_Reasoning": "={{ $('Prepare Critical Escalation').item.json.reasoning }}",
+            "Patient_Notified": "No - Staff handling",
+            "Notified_Date": "",
+            "Doctor_Reviewed_By": "URGENT - Pending immediate action",
+            "Critical_Flags": "={{ $('Prepare Critical Escalation').item.json.concerningFindings.join(', ') }}",
+            "Notes": "🚨 CRITICAL - {{ $('Prepare Critical Escalation').item.json.criticalCount }} life-threatening values"
+          },
+          "matchingColumns": []
+        },
+        "options": {}
+      },
+      "id": "log-critical-results",
+      "name": "Log Critical Results",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.4,
+      "position": [
+        1340,
+        600
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "google-sheets-credential",
+          "name": "Google Sheets Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "## 📢 Lab Results Notifier Workflow\n\n**Purpose**: Send appropriate notifications based on AI triage decision\n\n**Called by**: Lab Results AI Triage workflow\n\n**Three Notification Paths**:\n\n**1️⃣ NORMAL (70%)** - Auto-notify patient:\n- Send SMS with results summary + secure link\n- Send email with detailed results\n- Log to Google Sheets\n- No doctor involvement needed\n\n**2️⃣ ABNORMAL (20%)** - Doctor review:\n- Send Slack message to doctor with:\n  - Abnormal values highlighted\n  - AI suggested patient message\n  - Review options\n- Log as pending doctor review\n- Doctor approves message → patient notified\n\n**3️⃣ CRITICAL (10%)** - Immediate escalation:\n- Send urgent SMS to staff\n- Send critical Slack alert\n- Log with CRITICAL flag\n- DO NOT auto-notify patient\n- Staff must call patient immediately",
+        "height": 542,
+        "width": 389,
+        "color": 4
+      },
+      "id": "sticky-note-workflow-info",
+      "name": "Workflow Info",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        240,
+        800
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## ✅ Normal Results Path\n\n**Patient receives** (within 2 hours of results arrival):\n\n**SMS**:\n\"Hi [Name], your lab results from [Date] are ready.\n\n✅ Everything looks normal!\n\nView detailed results: [secure link]\n\nNext steps: None needed. Continue current medications.\"\n\n**Email**: HTML formatted with:\n- All test values listed\n- Normal ranges shown\n- Secure link to full PDF\n- Doctor's notes\n\n**Secure Link**: Time-limited token (expires 7 days)\n- Links to patient portal or Google Drive\n- Shows full PDF of lab results\n\n**Logged**: Google Sheets with decision, timestamp, patient notified",
+        "height": 542,
+        "width": 389,
+        "color": 5
+      },
+      "id": "sticky-note-normal-path",
+      "name": "Normal Results Path",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        660,
+        800
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## ⚠️ Abnormal Results Path\n\n**Doctor receives Slack message**:\n- Patient demographics\n- Abnormal values highlighted (with reference ranges)\n- Normal values for context\n- AI analysis and reasoning\n- AI suggested patient message\n\n**Doctor options**:\n1. Approve AI message → patient notified\n2. Edit message → customize → send\n3. Mark \"Call patient\" → manual call\n\n**Examples of abnormal**:\n- High cholesterol (245 mg/dL, normal <200)\n- Low hemoglobin (10.5 g/dL, normal 12-16)\n- Elevated A1C (7.2%, normal <5.7)\n\n**Typical response time**: 2-4 hours\n\n**Patient notification**: Only after doctor approves",
+        "height": 542,
+        "width": 389,
+        "color": 6
+      },
+      "id": "sticky-note-abnormal-path",
+      "name": "Abnormal Results Path",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1080,
+        800
+      ]
+    }
+  ],
+  "connections": {
+    "When Called by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "Route by Decision",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route by Decision": {
+      "main": [
+        [
+          {
+            "node": "Prepare Normal Results Message",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Slack Review Message",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Critical Escalation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Normal Results Message": {
+      "main": [
+        [
+          {
+            "node": "Send SMS to Patient",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send SMS to Patient": {
+      "main": [
+        [
+          {
+            "node": "Send Email to Patient",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Email to Patient": {
+      "main": [
+        [
+          {
+            "node": "Log to Google Sheets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Slack Review Message": {
+      "main": [
+        [
+          {
+            "node": "Send Slack to Doctor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Slack to Doctor": {
+      "main": [
+        [
+          {
+            "node": "Log Abnormal Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Critical Escalation": {
+      "main": [
+        [
+          {
+            "node": "Send Urgent SMS to Staff",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Urgent SMS to Staff": {
+      "main": [
+        [
+          {
+            "node": "Send Critical Slack Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Critical Slack Alert": {
+      "main": [
+        [
+          {
+            "node": "Log Critical Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 0,
+  "updatedAt": "2026-01-27T16:30:00.000Z",
+  "versionId": "1"
+}

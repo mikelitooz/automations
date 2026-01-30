@@ -1,0 +1,595 @@
+{
+  "name": "Dr. Jennifer - Refill Processor (Actions)",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "workflow-trigger-processor",
+      "name": "When Called by Another Workflow",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [
+        240,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "check-auto-approve",
+              "leftValue": "={{ $json.decision }}",
+              "rightValue": "AUTO-APPROVE",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "route-decision",
+      "name": "Route by Decision",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [
+        460,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Prepare pharmacy API request for auto-approved refill\nconst data = $input.first().json;\nconst patientContext = data.patientContext;\nconst patient = patientContext.patient;\nconst medication = patientContext.requestedMedication;\n\n// Build pharmacy transmission payload (Surescripts-compatible format)\nconst pharmacyRequest = {\n  // Patient demographics\n  patient: {\n    firstName: patient.name.split(' ')[0] || '',\n    lastName: patient.name.split(' ').slice(1).join(' ') || '',\n    dateOfBirth: patient.dateOfBirth || '',\n    patientId: patient.id || ''\n  },\n  \n  // Prescription details\n  prescription: {\n    drugName: medication.name || '',\n    strength: medication.dosage || '',\n    dosageForm: 'tablet', // Could be extracted from medication name\n    quantity: 30, // Standard 30-day supply\n    daysSupply: 30,\n    refills: 3, // New refill authorization\n    directions: medication.frequency || 'Take as directed',\n    writtenDate: new Date().toISOString().split('T')[0]\n  },\n  \n  // Prescriber\n  prescriber: {\n    npi: process.env.PRESCRIBER_NPI || '1234567890',\n    name: patient.primaryDoctor || 'Dr. Jennifer',\n    phone: process.env.OFFICE_PHONE || '+15555551234',\n    fax: process.env.OFFICE_FAX || '+15555551235'\n  },\n  \n  // Pharmacy (patient's preferred pharmacy from sheet, or default)\n  pharmacy: {\n    ncpdpId: process.env.DEFAULT_PHARMACY_NCPDP || '1234567', // 7-digit NCPDP ID\n    name: process.env.DEFAULT_PHARMACY_NAME || 'CVS Pharmacy #12345',\n    phone: process.env.DEFAULT_PHARMACY_PHONE || '+15555559999'\n  },\n  \n  // Metadata\n  metadata: {\n    requestId: `REFILL-${patient.id}-${Date.now()}`,\n    submittedBy: 'AI-TRIAGE-AUTO-APPROVE',\n    submittedAt: new Date().toISOString(),\n    aiConfidence: data.confidence || 0.0,\n    aiReasoning: data.reasoning || ''\n  }\n};\n\nreturn {\n  json: {\n    pharmacyRequest: pharmacyRequest,\n    // Pass through for logging\n    patientName: patient.name,\n    patientId: patient.id,\n    medicationName: medication.name,\n    decision: data.decision,\n    reasoning: data.reasoning\n  }\n};"
+      },
+      "id": "prepare-pharmacy-request",
+      "name": "Prepare Pharmacy Request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        680,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.PHARMACY_API_URL || 'https://mock-pharmacy-api.example.com/refill' }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "patient",
+              "value": "={{ $json.pharmacyRequest.patient }}"
+            },
+            {
+              "name": "prescription",
+              "value": "={{ $json.pharmacyRequest.prescription }}"
+            },
+            {
+              "name": "prescriber",
+              "value": "={{ $json.pharmacyRequest.prescriber }}"
+            },
+            {
+              "name": "pharmacy",
+              "value": "={{ $json.pharmacyRequest.pharmacy }}"
+            },
+            {
+              "name": "metadata",
+              "value": "={{ $json.pharmacyRequest.metadata }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "send-to-pharmacy-api",
+      "name": "Send to Pharmacy API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        900,
+        200
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "pharmacy-api-credential",
+          "name": "Pharmacy API Key"
+        }
+      },
+      "notes": "PRODUCTION: Replace with Surescripts API endpoint\nMOCK: Use mock API that returns success/failure for testing"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.twilio.com/2010-04-01/Accounts/={{ $credentials.twilioApi.accountSid }}/Messages.json",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "twilioApi",
+        "sendBody": true,
+        "contentType": "form-urlencoded",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "From",
+              "value": "={{ $env.TWILIO_REFILL_PHONE_NUMBER }}"
+            },
+            {
+              "name": "To",
+              "value": "={{ $('Route by Decision').item.json.patientContext.patient.phone || $('Route by Decision').item.json.patientContext.patient.phoneNumber }}"
+            },
+            {
+              "name": "Body",
+              "value": "=✅ Refill approved!\n\nYour prescription for {{ $('Prepare Pharmacy Request').item.json.medicationName }} has been sent to your pharmacy.\n\nIt should be ready in 1-2 hours. You'll receive a text from the pharmacy when it's ready for pickup.\n\n- Dr. Jennifer's Office"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "send-approval-sms",
+      "name": "Send Approval SMS",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1120,
+        200
+      ],
+      "credentials": {
+        "twilioApi": {
+          "id": "twilio-credential",
+          "name": "Twilio Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $env.GOOGLE_SHEET_ID }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Refill_Requests",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Request_ID": "={{ $('Prepare Pharmacy Request').item.json.pharmacyRequest.metadata.requestId }}",
+            "Patient_Name": "={{ $('Prepare Pharmacy Request').item.json.patientName }}",
+            "Patient_ID": "={{ $('Prepare Pharmacy Request').item.json.patientId }}",
+            "Medication": "={{ $('Prepare Pharmacy Request').item.json.medicationName }}",
+            "Request_Date": "={{ new Date().toLocaleString('en-US', { timeZone: 'America/New_York' }) }}",
+            "Decision": "={{ $('Prepare Pharmacy Request').item.json.decision }}",
+            "AI_Reasoning": "={{ $('Prepare Pharmacy Request').item.json.reasoning }}",
+            "Pharmacy_Status": "={{ $json.status || 'Sent' }}",
+            "Patient_Notified": "Yes",
+            "Processed_By": "AI Auto-Approve"
+          },
+          "matchingColumns": []
+        },
+        "options": {}
+      },
+      "id": "log-auto-approve",
+      "name": "Log to Google Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.4,
+      "position": [
+        1340,
+        200
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "google-sheets-credential",
+          "name": "Google Sheets Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Prepare Slack message for doctor approval\nconst data = $input.first().json;\nconst patientContext = data.patientContext;\nconst patient = patientContext.patient;\nconst medication = patientContext.requestedMedication;\nconst request = patientContext.request;\n\nconst slackMessage = {\n  channel: process.env.SLACK_DOCTOR_CHANNEL || '#refill-approvals',\n  text: `⚠️ Prescription Refill Needs Doctor Approval`,\n  blocks: [\n    {\n      type: 'header',\n      text: {\n        type: 'plain_text',\n        text: '⚠️ Refill Request: Doctor Approval Needed'\n      }\n    },\n    {\n      type: 'section',\n      fields: [\n        {\n          type: 'mrkdwn',\n          text: `*Patient:*\\n${patient.name}`\n        },\n        {\n          type: 'mrkdwn',\n          text: `*Patient ID:*\\n${patient.id}`\n        },\n        {\n          type: 'mrkdwn',\n          text: `*Last Visit:*\\n${patient.lastVisitDate || 'Unknown'} (${patient.daysSinceLastVisit || '?'} days ago)`\n        },\n        {\n          type: 'mrkdwn',\n          text: `*Request:*\\n\"${request.rawText}\"`\n        }\n      ]\n    },\n    {\n      type: 'section',\n      fields: [\n        {\n          type: 'mrkdwn',\n          text: `*Medication:*\\n${medication ? medication.name : 'Not matched'}`\n        },\n        {\n          type: 'mrkdwn',\n          text: `*Dosage:*\\n${medication ? medication.dosage : 'N/A'}`\n        },\n        {\n          type: 'mrkdwn',\n          text: `*Refills Left:*\\n${medication ? medication.refillsRemaining : 'N/A'}`\n        },\n        {\n          type: 'mrkdwn',\n          text: `*Last Filled:*\\n${medication ? medication.lastFilledDate : 'N/A'}`\n        }\n      ]\n    },\n    {\n      type: 'section',\n      text: {\n        type: 'mrkdwn',\n        text: `*AI Analysis:*\\n${data.reasoning}`\n      }\n    },\n    {\n      type: 'section',\n      text: {\n        type: 'mrkdwn',\n        text: `*Recommended Action:*\\n${data.recommendedAction}`\n      }\n    },\n    {\n      type: 'actions',\n      elements: [\n        {\n          type: 'button',\n          text: {\n            type: 'plain_text',\n            text: '✅ Approve Refill'\n          },\n          style: 'primary',\n          value: `approve_${patient.id}_${medication ? medication.name.replace(/\\s/g, '_') : 'unknown'}`,\n          action_id: 'approve_refill'\n        },\n        {\n          type: 'button',\n          text: {\n            type: 'plain_text',\n            text: '❌ Deny Refill'\n          },\n          style: 'danger',\n          value: `deny_${patient.id}_${medication ? medication.name.replace(/\\s/g, '_') : 'unknown'}`,\n          action_id: 'deny_refill'\n        },\n        {\n          type: 'button',\n          text: {\n            type: 'plain_text',\n            text: '📞 Call Patient'\n          },\n          value: `call_${patient.id}`,\n          action_id: 'call_patient'\n        }\n      ]\n    }\n  ]\n};\n\nreturn {\n  json: {\n    slackMessage: slackMessage,\n    // Pass through for logging\n    patientName: patient.name,\n    patientId: patient.id,\n    patientPhone: patient.phone || patient.phoneNumber || '',\n    medicationName: medication ? medication.name : 'Unknown',\n    decision: data.decision,\n    reasoning: data.reasoning\n  }\n};"
+      },
+      "id": "prepare-slack-approval",
+      "name": "Prepare Slack Approval",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        680,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "post",
+        "channel": "={{ $json.slackMessage.channel }}",
+        "text": "={{ $json.slackMessage.text }}",
+        "blocksUi": {
+          "blocksValues": "={{ JSON.stringify($json.slackMessage.blocks) }}"
+        },
+        "otherOptions": {}
+      },
+      "id": "send-slack-approval",
+      "name": "Send Slack Approval Request",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.2,
+      "position": [
+        900,
+        400
+      ],
+      "credentials": {
+        "slackApi": {
+          "id": "slack-api-credential",
+          "name": "Slack API"
+        }
+      },
+      "notes": "Sends interactive message to doctor's Slack channel\nDoctor can click Approve/Deny/Call Patient buttons"
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $env.GOOGLE_SHEET_ID }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Refill_Requests",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Request_ID": "=NEEDS-APPROVAL-{{ $('Prepare Slack Approval').item.json.patientId }}-{{ Date.now() }}",
+            "Patient_Name": "={{ $('Prepare Slack Approval').item.json.patientName }}",
+            "Patient_ID": "={{ $('Prepare Slack Approval').item.json.patientId }}",
+            "Medication": "={{ $('Prepare Slack Approval').item.json.medicationName }}",
+            "Request_Date": "={{ new Date().toLocaleString('en-US', { timeZone: 'America/New_York' }) }}",
+            "Decision": "={{ $('Prepare Slack Approval').item.json.decision }}",
+            "AI_Reasoning": "={{ $('Prepare Slack Approval').item.json.reasoning }}",
+            "Pharmacy_Status": "Pending Doctor Approval",
+            "Patient_Notified": "No",
+            "Processed_By": "Awaiting Doctor"
+          },
+          "matchingColumns": []
+        },
+        "options": {}
+      },
+      "id": "log-needs-approval",
+      "name": "Log Needs Approval",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.4,
+      "position": [
+        1120,
+        400
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "google-sheets-credential",
+          "name": "Google Sheets Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Prepare urgent escalation notification\nconst data = $input.first().json;\nconst patientContext = data.patientContext;\nconst patient = patientContext.patient;\nconst medication = patientContext.requestedMedication;\nconst request = patientContext.request;\nconst flags = data.flags || [];\n\n// Determine urgency level\nconst isControlled = medication && medication.isControlledSubstance;\nconst isOldVisit = patient.daysSinceLastVisit > 365;\nconst hasSafetyConcern = flags.includes('safety-concern');\n\nlet urgencyLevel = 'HIGH';\nif (isControlled || hasSafetyConcern) {\n  urgencyLevel = 'CRITICAL';\n}\n\nconst escalationMessage = {\n  urgency: urgencyLevel,\n  patient: {\n    name: patient.name,\n    id: patient.id,\n    phone: patient.phone || patient.phoneNumber || '',\n    lastVisit: patient.lastVisitDate || 'Unknown',\n    daysSinceVisit: patient.daysSinceLastVisit || null\n  },\n  request: {\n    text: request.rawText,\n    medication: medication ? medication.name : 'Not matched'\n  },\n  flags: flags,\n  reasoning: data.reasoning,\n  recommendedAction: data.recommendedAction,\n  timestamp: new Date().toISOString()\n};\n\n// Build SMS to staff\nconst staffSMS = `🚨 URGENT REFILL ESCALATION\n\nPatient: ${patient.name}\nPhone: ${patient.phone || 'N/A'}\nRequest: \"${request.rawText}\"\n\n${isControlled ? '⚠️ CONTROLLED SUBSTANCE' : ''}\n${isOldVisit ? '⚠️ Last visit over 1 year ago' : ''}\n${hasSafetyConcern ? '⚠️ SAFETY CONCERN' : ''}\n\nAction: Call patient immediately\n\n- Dr. Jennifer's Office`;\n\n// Build Slack alert\nconst slackAlert = {\n  channel: process.env.SLACK_URGENT_CHANNEL || '#urgent-refills',\n  text: `🚨 CRITICAL: Refill Request Escalation`,\n  blocks: [\n    {\n      type: 'header',\n      text: {\n        type: 'plain_text',\n        text: '🚨 CRITICAL: Refill Request Escalation'\n      }\n    },\n    {\n      type: 'section',\n      fields: [\n        {\n          type: 'mrkdwn',\n          text: `*Patient:*\\n${patient.name}`\n        },\n        {\n          type: 'mrkdwn',\n          text: `*Phone:*\\n${patient.phone || 'N/A'}`\n        },\n        {\n          type: 'mrkdwn',\n          text: `*Request:*\\n\"${request.rawText}\"`\n        },\n        {\n          type: 'mrkdwn',\n          text: `*Medication:*\\n${medication ? medication.name : 'Not matched'}`\n        }\n      ]\n    },\n    {\n      type: 'section',\n      text: {\n        type: 'mrkdwn',\n        text: `*Escalation Reasons:*\\n${flags.map(f => `• ${f}`).join('\\n') || 'See AI reasoning below'}`\n      }\n    },\n    {\n      type: 'section',\n      text: {\n        type: 'mrkdwn',\n        text: `*AI Analysis:*\\n${data.reasoning}`\n      }\n    },\n    {\n      type: 'section',\n      text: {\n        type: 'mrkdwn',\n        text: `*Recommended Action:*\\n${data.recommendedAction}`\n      }\n    },\n    {\n      type: 'actions',\n      elements: [\n        {\n          type: 'button',\n          text: {\n            type: 'plain_text',\n            text: '📞 Call Patient Now'\n          },\n          style: 'danger',\n          value: `call_urgent_${patient.id}`,\n          action_id: 'call_urgent'\n        }\n      ]\n    }\n  ]\n};\n\nreturn {\n  json: {\n    escalationMessage: escalationMessage,\n    staffSMS: staffSMS,\n    slackAlert: slackAlert,\n    // Pass through for logging\n    patientName: patient.name,\n    patientId: patient.id,\n    patientPhone: patient.phone || patient.phoneNumber || '',\n    medicationName: medication ? medication.name : 'Unknown',\n    decision: data.decision,\n    reasoning: data.reasoning,\n    flags: flags\n  }\n};"
+      },
+      "id": "prepare-escalation",
+      "name": "Prepare Escalation",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        680,
+        600
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.twilio.com/2010-04-01/Accounts/={{ $credentials.twilioApi.accountSid }}/Messages.json",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "twilioApi",
+        "sendBody": true,
+        "contentType": "form-urlencoded",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "From",
+              "value": "={{ $env.TWILIO_REFILL_PHONE_NUMBER }}"
+            },
+            {
+              "name": "To",
+              "value": "={{ $env.STAFF_ALERT_PHONE }}"
+            },
+            {
+              "name": "Body",
+              "value": "={{ $json.staffSMS }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "send-staff-alert-sms",
+      "name": "Send Staff Alert SMS",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        900,
+        600
+      ],
+      "credentials": {
+        "twilioApi": {
+          "id": "twilio-credential",
+          "name": "Twilio Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "post",
+        "channel": "={{ $json.slackAlert.channel }}",
+        "text": "={{ $json.slackAlert.text }}",
+        "blocksUi": {
+          "blocksValues": "={{ JSON.stringify($json.slackAlert.blocks) }}"
+        },
+        "otherOptions": {}
+      },
+      "id": "send-slack-escalation",
+      "name": "Send Slack Escalation",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.2,
+      "position": [
+        1120,
+        600
+      ],
+      "credentials": {
+        "slackApi": {
+          "id": "slack-api-credential",
+          "name": "Slack API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $env.GOOGLE_SHEET_ID }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Refill_Requests",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Request_ID": "=ESCALATE-{{ $('Prepare Escalation').item.json.patientId }}-{{ Date.now() }}",
+            "Patient_Name": "={{ $('Prepare Escalation').item.json.patientName }}",
+            "Patient_ID": "={{ $('Prepare Escalation').item.json.patientId }}",
+            "Medication": "={{ $('Prepare Escalation').item.json.medicationName }}",
+            "Request_Date": "={{ new Date().toLocaleString('en-US', { timeZone: 'America/New_York' }) }}",
+            "Decision": "={{ $('Prepare Escalation').item.json.decision }}",
+            "AI_Reasoning": "={{ $('Prepare Escalation').item.json.reasoning }}",
+            "Pharmacy_Status": "ESCALATED - Staff Notified",
+            "Patient_Notified": "No",
+            "Processed_By": "URGENT - Staff Action Required",
+            "Flags": "={{ $('Prepare Escalation').item.json.flags.join(', ') }}"
+          },
+          "matchingColumns": []
+        },
+        "options": {}
+      },
+      "id": "log-escalation",
+      "name": "Log Escalation",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.4,
+      "position": [
+        1340,
+        600
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "google-sheets-credential",
+          "name": "Google Sheets Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "## ⚙️ Refill Processor Workflow\n\n**Purpose**: Execute actions based on AI triage decision\n\n**Called by**: AI Triage workflow\n\n**Three Processing Paths**:\n\n**1️⃣ AUTO-APPROVE Path** (80% of requests)\n- Send to pharmacy via Surescripts API\n- SMS confirmation to patient\n- Log to Google Sheets\n\n**2️⃣ NEEDS-APPROVAL Path** (15% of requests)\n- Send Slack message to doctor with interactive buttons\n- Log to Google Sheets as pending\n- Wait for doctor response (handled by separate Slack webhook)\n\n**3️⃣ ESCALATE Path** (5% of requests)\n- Send urgent SMS to staff\n- Send critical Slack alert\n- Log with URGENT flag\n- Requires immediate manual intervention\n\n**All paths log to Google Sheets for audit trail**",
+        "height": 542,
+        "width": 389,
+        "color": 4
+      },
+      "id": "sticky-note-processor-info",
+      "name": "Workflow Info",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        240,
+        620
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 🏥 Pharmacy Integration\n\n**PRODUCTION (Surescripts API)**:\n- 95% of US pharmacies covered\n- Real-time e-prescribing\n- EPCS support (controlled substances)\n- Patient's preferred pharmacy\n- $0.50-1.00 per transmission\n\n**MOCK API (Testing)**:\n- Simulates pharmacy responses\n- Returns success/failure\n- No actual prescriptions sent\n- Perfect for development/testing\n\n**Request Format**:\nSurescripts-compatible NCPDP SCRIPT standard\n- Patient demographics\n- Prescription details (drug, dosage, quantity)\n- Prescriber NPI + credentials\n- Pharmacy NCPDP ID\n\n**Response Codes**:\n- 000: Success (prescription accepted)\n- 010: Pharmacy not found\n- 020: Patient insurance issue\n- 900: System error",
+        "height": 542,
+        "width": 389,
+        "color": 5
+      },
+      "id": "sticky-note-pharmacy",
+      "name": "Pharmacy Integration",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        660,
+        620
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 📊 Audit Logging\n\n**All requests logged to Google Sheets**:\n- Request_ID (unique identifier)\n- Patient_Name, Patient_ID\n- Medication requested\n- Request_Date (timestamp)\n- Decision (AUTO-APPROVE/NEEDS-APPROVAL/ESCALATE)\n- AI_Reasoning (full explanation)\n- Pharmacy_Status (sent/pending/escalated)\n- Patient_Notified (Yes/No)\n- Processed_By (AI/Doctor/Staff)\n- Flags (controlled-substance, safety-concern, etc.)\n\n**Used for**:\n- Compliance audits (DEA, state boards)\n- Quality assurance (AI accuracy)\n- Performance metrics (approval rates)\n- Doctor review of AI decisions\n\n**Retention**: 7 years (HIPAA requirement)",
+        "height": 542,
+        "width": 389,
+        "color": 6
+      },
+      "id": "sticky-note-logging",
+      "name": "Audit Logging",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1080,
+        620
+      ]
+    }
+  ],
+  "connections": {
+    "When Called by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "Route by Decision",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route by Decision": {
+      "main": [
+        [
+          {
+            "node": "Prepare Pharmacy Request",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Slack Approval",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Escalation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Pharmacy Request": {
+      "main": [
+        [
+          {
+            "node": "Send to Pharmacy API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send to Pharmacy API": {
+      "main": [
+        [
+          {
+            "node": "Send Approval SMS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Approval SMS": {
+      "main": [
+        [
+          {
+            "node": "Log to Google Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Slack Approval": {
+      "main": [
+        [
+          {
+            "node": "Send Slack Approval Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Slack Approval Request": {
+      "main": [
+        [
+          {
+            "node": "Log Needs Approval",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Escalation": {
+      "main": [
+        [
+          {
+            "node": "Send Staff Alert SMS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Staff Alert SMS": {
+      "main": [
+        [
+          {
+            "node": "Send Slack Escalation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Slack Escalation": {
+      "main": [
+        [
+          {
+            "node": "Log Escalation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 0,
+  "updatedAt": "2026-01-27T14:30:00.000Z",
+  "versionId": "1"
+}

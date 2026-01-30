@@ -1,0 +1,368 @@
+{
+  "name": "06 - Error Monitoring & Health",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 15
+            }
+          ]
+        }
+      },
+      "id": "schedule-health",
+      "name": "Schedule - Health Check",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [250, 200]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "is-error",
+              "leftValue": "={{ $json.severity }}",
+              "rightValue": "error",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      },
+      "id": "trigger-error",
+      "name": "Error Trigger",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [250, 400]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "http://api:3000/health",
+        "options": {
+          "timeout": 5000
+        }
+      },
+      "id": "check-api-health",
+      "name": "HTTP - API Health Check",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [470, 200],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Process error from failed workflow\nconst error = $input.first().json;\n\nconst errorReport = {\n  type: 'workflow_error',\n  severity: 'error',\n  timestamp: new Date().toISOString(),\n  \n  // Error details\n  error: {\n    message: error.message || 'Unknown error',\n    workflow: error.workflow?.name || 'Unknown',\n    workflowId: error.workflow?.id,\n    node: error.node?.name || 'Unknown',\n    nodeType: error.node?.type,\n    executionId: error.execution?.id\n  },\n  \n  // Context\n  context: {\n    mode: error.execution?.mode,\n    retryOfExecutionId: error.execution?.retryOf,\n    startedAt: error.execution?.startedAt\n  },\n  \n  // Action required\n  actionRequired: true,\n  suggestedAction: (() => {\n    const msg = (error.message || '').toLowerCase();\n    if (msg.includes('timeout')) return 'Check service availability';\n    if (msg.includes('authentication')) return 'Verify API credentials';\n    if (msg.includes('rate limit')) return 'Implement retry with backoff';\n    if (msg.includes('404')) return 'Check endpoint URL';\n    return 'Review error logs';\n  })()\n};\n\nreturn errorReport;"
+      },
+      "id": "process-error",
+      "name": "Code - Process Error",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [470, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Analyze health check results\nconst apiResponse = $input.first().json;\nconst isError = $input.first().error;\n\nconst healthReport = {\n  timestamp: new Date().toISOString(),\n  checkType: 'scheduled',\n  \n  services: {\n    api: {\n      status: isError ? 'down' : 'healthy',\n      responseTime: apiResponse?._meta?.responseTime || null,\n      uptime: apiResponse?.uptime || null,\n      error: isError ? 'API unreachable' : null\n    },\n    n8n: {\n      status: 'healthy', // If we're running, n8n is up\n      executionId: $execution.id\n    }\n  },\n  \n  // Overall status\n  overallStatus: isError ? 'degraded' : 'healthy',\n  \n  // Metrics\n  metrics: {\n    apiHealthy: !isError,\n    lastCheck: new Date().toISOString()\n  }\n};\n\nreturn healthReport;"
+      },
+      "id": "analyze-health",
+      "name": "Code - Analyze Health",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [690, 200]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "status-check",
+              "leftValue": "={{ $json.overallStatus }}",
+              "rightValue": "healthy",
+              "operator": {
+                "type": "string",
+                "operation": "notEquals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-status",
+      "name": "IF - Status Unhealthy",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [910, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Generate alert for unhealthy status\nconst health = $input.first().json;\n\nconst alert = {\n  type: 'health_alert',\n  severity: health.overallStatus === 'down' ? 'critical' : 'warning',\n  title: `System Health Alert: ${health.overallStatus.toUpperCase()}`,\n  \n  message: (() => {\n    const issues = [];\n    if (health.services.api.status !== 'healthy') {\n      issues.push(`API service is ${health.services.api.status}`);\n    }\n    return issues.join('; ') || 'Unknown issue detected';\n  })(),\n  \n  services: health.services,\n  timestamp: new Date().toISOString(),\n  \n  // Notification targets\n  notify: {\n    slack: true,\n    email: health.overallStatus === 'down',\n    pagerDuty: health.overallStatus === 'down'\n  }\n};\n\nreturn alert;"
+      },
+      "id": "create-health-alert",
+      "name": "Code - Create Health Alert",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1130, 100]
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "status",
+              "value": "healthy"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "log-healthy",
+      "name": "Set - Log Healthy",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.3,
+      "position": [1130, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Generate error alert\nconst error = $input.first().json;\n\nconst alert = {\n  type: 'error_alert',\n  severity: 'error',\n  title: `Workflow Error: ${error.error.workflow}`,\n  \n  message: error.error.message,\n  \n  details: {\n    workflow: error.error.workflow,\n    node: error.error.node,\n    nodeType: error.error.nodeType,\n    executionId: error.error.executionId,\n    suggestedAction: error.suggestedAction\n  },\n  \n  timestamp: error.timestamp,\n  \n  // Link to execution\n  executionUrl: `${process.env.N8N_HOST || 'http://localhost:5678'}/workflow/${error.error.workflowId}/executions/${error.error.executionId}`,\n  \n  notify: {\n    slack: true,\n    email: true\n  }\n};\n\nreturn alert;"
+      },
+      "id": "create-error-alert",
+      "name": "Code - Create Error Alert",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [690, 400]
+    },
+    {
+      "parameters": {
+        "mode": "chooseBranch",
+        "output": "extra"
+      },
+      "id": "merge-alerts",
+      "name": "Merge - All Alerts",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2.1,
+      "position": [1350, 250]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Log alert (would send to Slack/Email in production)\nconst alert = $input.first().json;\n\nconsole.log('=== ALERT ===');\nconsole.log(`Type: ${alert.type}`);\nconsole.log(`Severity: ${alert.severity}`);\nconsole.log(`Title: ${alert.title}`);\nconsole.log(`Message: ${alert.message}`);\nconsole.log('=============');\n\nreturn {\n  alertLogged: true,\n  alert,\n  loggedAt: new Date().toISOString()\n};"
+      },
+      "id": "log-alert",
+      "name": "Code - Log Alert",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1570, 250]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 9 * * *"
+            }
+          ]
+        }
+      },
+      "id": "schedule-daily",
+      "name": "Schedule - Daily Digest",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [250, 600]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Generate daily health digest\nconst digest = {\n  type: 'daily_digest',\n  date: new Date().toISOString().split('T')[0],\n  generatedAt: new Date().toISOString(),\n  \n  summary: {\n    title: 'AutoScale CRM - Daily Health Digest',\n    period: '24 hours',\n    overallHealth: 'healthy', // Would be calculated from actual metrics\n  },\n  \n  metrics: {\n    workflowExecutions: {\n      total: 156, // Placeholder - would query actual data\n      successful: 152,\n      failed: 4,\n      successRate: '97.4%'\n    },\n    leadsProcessed: {\n      total: 23,\n      qualified: 8,\n      nurture: 12,\n      disqualified: 3\n    },\n    apiPerformance: {\n      averageResponseTime: '45ms',\n      uptime: '99.9%',\n      totalRequests: 1250\n    }\n  },\n  \n  alerts: {\n    critical: 0,\n    warning: 2,\n    info: 5\n  },\n  \n  recommendations: [\n    'Review 4 failed workflow executions',\n    'Consider re-engaging 12 nurture leads',\n    'API response times within normal range'\n  ]\n};\n\nreturn digest;"
+      },
+      "id": "daily-digest",
+      "name": "Code - Generate Daily Digest",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [470, 600]
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "status",
+              "value": "digest_generated"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "digest-complete",
+      "name": "Set - Digest Complete",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.3,
+      "position": [690, 600]
+    }
+  ],
+  "connections": {
+    "Schedule - Health Check": {
+      "main": [
+        [
+          {
+            "node": "HTTP - API Health Check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "Code - Process Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP - API Health Check": {
+      "main": [
+        [
+          {
+            "node": "Code - Analyze Health",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Process Error": {
+      "main": [
+        [
+          {
+            "node": "Code - Create Error Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Analyze Health": {
+      "main": [
+        [
+          {
+            "node": "IF - Status Unhealthy",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Status Unhealthy": {
+      "main": [
+        [
+          {
+            "node": "Code - Create Health Alert",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Set - Log Healthy",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Create Health Alert": {
+      "main": [
+        [
+          {
+            "node": "Merge - All Alerts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Create Error Alert": {
+      "main": [
+        [
+          {
+            "node": "Merge - All Alerts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge - All Alerts": {
+      "main": [
+        [
+          {
+            "node": "Code - Log Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule - Daily Digest": {
+      "main": [
+        [
+          {
+            "node": "Code - Generate Daily Digest",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Generate Daily Digest": {
+      "main": [
+        [
+          {
+            "node": "Set - Digest Complete",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "name": "monitoring",
+      "id": "11"
+    },
+    {
+      "name": "devops",
+      "id": "12"
+    }
+  ],
+  "meta": {
+    "instanceId": "autoscale-crm-hub"
+  }
+}

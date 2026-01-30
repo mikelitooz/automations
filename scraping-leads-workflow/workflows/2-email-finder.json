@@ -1,0 +1,204 @@
+{
+  "name": "2. Email Finder & Enrichment",
+  "nodes": [
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "event": "rowAdded",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "YOUR_GOOGLE_SHEET_ID"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "id",
+          "value": "Raw Leads"
+        }
+      },
+      "id": "sheets-trigger",
+      "name": "On New Lead Added",
+      "type": "n8n-nodes-base.googleSheetsTrigger",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json['Email Address'] }}",
+              "operation": "isEmpty"
+            }
+          ]
+        }
+      },
+      "id": "filter-empty-email",
+      "name": "Filter: No Email",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "url": "=https://api.hunter.io/v2/email-finder?domain={{ $json['Company Website'] }}&first_name={{ $json['First Name'] }}&last_name={{ $json['Last Name'] }}&api_key=YOUR_HUNTER_API_KEY",
+        "options": {}
+      },
+      "id": "hunter-api",
+      "name": "Hunter.io Find Email",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [680, 220]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Try manual email pattern if no company website\nconst lead = $input.first().json;\nconst firstName = (lead['First Name'] || '').toLowerCase();\nconst lastName = (lead['Last Name'] || '').toLowerCase();\nconst website = (lead['Company Website'] || '').replace(/^https?:\\/\\//, '').replace(/^www\\./, '').split('/')[0];\n\nif (!website) {\n  return [{ json: { email: null, status: 'No Website' } }];\n}\n\n// Common email patterns\nconst patterns = [\n  `${firstName}@${website}`,\n  `${firstName}.${lastName}@${website}`,\n  `${firstName}${lastName}@${website}`,\n  `${firstName[0]}${lastName}@${website}`\n];\n\n// Return first pattern as guess\nreturn [{ json: { email: patterns[0], status: 'Pattern Guess' } }];"
+      },
+      "id": "manual-pattern",
+      "name": "Try Manual Pattern",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 380]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combinationMode": "mergeByPosition"
+      },
+      "id": "merge-results",
+      "name": "Merge Results",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Extract email from Hunter.io or manual pattern\nconst hunterData = $input.first().json;\nconst originalLead = $input.all()[1]?.json || {};\n\nlet email = null;\nlet emailStatus = 'Not Found';\n\n// Check Hunter.io result\nif (hunterData.data?.email) {\n  email = hunterData.data.email;\n  emailStatus = hunterData.data.score > 70 ? 'Valid' : 'Unknown';\n} else if (hunterData.email) {\n  // From manual pattern\n  email = hunterData.email;\n  emailStatus = 'Pattern Guess';\n}\n\nreturn [{\n  json: {\n    row_number: originalLead.row_number,\n    email: email,\n    email_status: emailStatus\n  }\n}];"
+      },
+      "id": "extract-email",
+      "name": "Extract Email",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "YOUR_GOOGLE_SHEET_ID"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "id",
+          "value": "Raw Leads"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Email Address": "={{ $json.email }}",
+            "Email Status": "={{ $json.email_status }}"
+          },
+          "matchingColumns": ["row_number"]
+        },
+        "options": {}
+      },
+      "id": "update-sheets",
+      "name": "Update Lead with Email",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [1340, 300]
+    }
+  ],
+  "connections": {
+    "On New Lead Added": {
+      "main": [
+        [
+          {
+            "node": "Filter: No Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter: No Email": {
+      "main": [
+        [
+          {
+            "node": "Hunter.io Find Email",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Try Manual Pattern",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Hunter.io Find Email": {
+      "main": [
+        [
+          {
+            "node": "Merge Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Try Manual Pattern": {
+      "main": [
+        [
+          {
+            "node": "Merge Results",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge Results": {
+      "main": [
+        [
+          {
+            "node": "Extract Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Email": {
+      "main": [
+        [
+          {
+            "node": "Update Lead with Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 0,
+  "updatedAt": "2025-01-04T00:00:00.000Z",
+  "versionId": "1"
+}

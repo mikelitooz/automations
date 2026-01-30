@@ -1,0 +1,262 @@
+{
+  "name": "6. Follow-Up Sequencer",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 24,
+              "triggerAtHour": 9
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Daily 9 AM Check",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "YOUR_GOOGLE_SHEET_ID"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "id",
+          "value": "Raw Leads"
+        },
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "Email Status",
+              "lookupValue": "Sent"
+            },
+            {
+              "lookupColumn": "Reply Status",
+              "lookupValue": "No Reply"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "get-sent-leads",
+      "name": "Get Sent Leads (No Reply)",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Calculate days since last contact\nconst sentDate = new Date($json['Last Contact Date']);\nconst today = new Date();\nconst daysSince = Math.floor((today - sentDate) / (1000 * 60 * 60 * 24));\nconst followUpCount = parseInt($json['Follow-Up Count'] || 0);\n\n// Determine if follow-up needed\nlet needsFollowUp = false;\nlet followUpType = '';\n\nif (followUpCount === 0 && daysSince >= 3) {\n  needsFollowUp = true;\n  followUpType = 'first'; // Day 3\n} else if (followUpCount === 1 && daysSince >= 7) {\n  needsFollowUp = true;\n  followUpType = 'second'; // Day 7\n} else if (followUpCount === 2 && daysSince >= 14) {\n  needsFollowUp = true;\n  followUpType = 'final'; // Day 14\n}\n\nreturn {\n  json: {\n    ...$ json,\n    needs_follow_up: needsFollowUp,\n    follow_up_type: followUpType,\n    days_since_contact: daysSince\n  }\n};"
+      },
+      "id": "calculate-follow-up",
+      "name": "Calculate Follow-Up Date",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.needs_follow_up }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "filter-needs-followup",
+      "name": "Filter: Needs Follow-Up",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Generate a follow-up email for someone who didn't respond to the initial cold email.\n\nCONTEXT:\n- Original email was about: {{ $json['Email Subject'] }}\n- Lead info: {{ $json['First Name'] }}, {{ $json['Company Name'] }}\n- Follow-up type: {{ $json.follow_up_type }}\n- Days since last email: {{ $json.days_since_contact }}\n\nYOUR TASK:\nCreate follow-up (60-80 words) based on type:\n\n**FIRST FOLLOW-UP (Day 3)**: Value-add approach\n1. Acknowledge no response (brief, no guilt trip)\n2. Provide free resource or insight (not sales pitch)\n3. Soft reopener (optional)\nTONE: Helpful, not pushy. Focus on giving value.\n\n**SECOND FOLLOW-UP (Day 7)**: Different angle\n1. Brief reference to original email\n2. Try different pain point/value proposition\n3. Simple yes/no question\nTONE: Conversational, low-pressure.\n\n**FINAL FOLLOW-UP (Day 14)**: Breakup email\n1. Acknowledge silence\n2. Assume not interested (give them an out)\n3. One last soft offer\n4. Easy way to respond if interested\nTONE: Respectful, not desperate.\n\nOUTPUT FORMAT:\n{\n  \"subject\": \"...\",\n  \"body\": \"...\"\n}\n\nDO NOT include footer (added automatically).\nUse actual name, not placeholders."
+      },
+      "id": "ai-chain",
+      "name": "Generate Follow-Up",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.4,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "options": {
+          "temperature": 0.8
+        }
+      },
+      "id": "openai-model",
+      "name": "ChatGPT Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1,
+      "position": [1120, 160]
+    },
+    {
+      "parameters": {
+        "jsonSchema": "={\n  \"type\": \"object\",\n  \"properties\": {\n    \"subject\": {\"type\": \"string\"},\n    \"body\": {\"type\": \"string\"}\n  },\n  \"required\": [\"subject\", \"body\"]\n}"
+      },
+      "id": "output-parser",
+      "name": "Parse Output",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1,
+      "position": [1120, 420]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json['Email Address'] }}",
+        "subject": "={{ $json.output.subject }}",
+        "emailType": "text",
+        "message": "={{ $json.output.body }}\n\n---\nThis is a business inquiry. Reply \"stop\" to unsubscribe.\n\nIzzy Dev\nAutomation Agency\n1234 Main Street, Suite 100\nLos Angeles, CA 90001",
+        "options": {
+          "senderName": "Izzy from Automation Agency"
+        }
+      },
+      "id": "send-followup",
+      "name": "Send Follow-Up",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [1340, 300]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "YOUR_GOOGLE_SHEET_ID"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "id",
+          "value": "Raw Leads"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Follow-Up Count": "={{ parseInt($json['Follow-Up Count'] || 0) + 1 }}",
+            "Last Contact Date": "={{ $now.toISO() }}",
+            "Follow-Up Status": "={{ parseInt($json['Follow-Up Count'] || 0) + 1 >= 3 ? 'Completed' : 'Active' }}"
+          },
+          "matchingColumns": ["Lead ID"]
+        },
+        "options": {}
+      },
+      "id": "update-followup-status",
+      "name": "Update Follow-Up Status",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [1560, 300]
+    }
+  ],
+  "connections": {
+    "Daily 9 AM Check": {
+      "main": [
+        [
+          {
+            "node": "Get Sent Leads (No Reply)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Sent Leads (No Reply)": {
+      "main": [
+        [
+          {
+            "node": "Calculate Follow-Up Date",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculate Follow-Up Date": {
+      "main": [
+        [
+          {
+            "node": "Filter: Needs Follow-Up",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter: Needs Follow-Up": {
+      "main": [
+        [
+          {
+            "node": "Generate Follow-Up",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ChatGPT Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Generate Follow-Up",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Output": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Generate Follow-Up",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Follow-Up": {
+      "main": [
+        [
+          {
+            "node": "Send Follow-Up",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Follow-Up": {
+      "main": [
+        [
+          {
+            "node": "Update Follow-Up Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 0,
+  "updatedAt": "2025-01-04T00:00:00.000Z",
+  "versionId": "1"
+}

@@ -1,0 +1,15 @@
+{
+  "name": "autoscale-crm-tests",
+  "version": "1.0.0",
+  "description": "Playwright tests for AutoScale CRM Intelligence Hub",
+  "scripts": {
+    "test": "npx playwright test",
+    "test:api": "npx playwright test --project=api-tests",
+    "test:workflows": "npx playwright test --project=workflow-tests",
+    "test:headed": "npx playwright test --headed",
+    "report": "npx playwright show-report"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.40.1"
+  }
+}

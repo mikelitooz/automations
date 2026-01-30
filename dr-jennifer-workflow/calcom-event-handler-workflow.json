@@ -1,0 +1,390 @@
+{
+  "name": "Cal.com Event Handler - Cancellations & Reschedules",
+  "nodes": [
+    {
+      "parameters": {
+        "events": [
+          "BOOKING_CANCELLED",
+          "BOOKING_RESCHEDULED"
+        ],
+        "options": {}
+      },
+      "type": "n8n-nodes-base.calTrigger",
+      "typeVersion": 2,
+      "position": [-1200, 400],
+      "id": "calcom-trigger",
+      "name": "Cal.com Trigger",
+      "webhookId": "",
+      "credentials": {
+        "calApi": {
+          "id": "0kClI1PjxBFDOm6a",
+          "name": "Cal account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "/**\n * Parse Cal.com webhook payload\n * Extract key appointment details\n */\n\nconst results = [];\n\nfor (const item of $input.all()) {\n  try {\n    const webhook = item.json;\n    \n    // Determine event type\n    const eventType = webhook.triggerEvent; // \"BOOKING_CANCELLED\" or \"BOOKING_RESCHEDULED\"\n    \n    // Extract attendee info (patient)\n    const attendee = webhook.attendees && webhook.attendees[0] ? webhook.attendees[0] : {};\n    const patientEmail = attendee.email || \"\";\n    const patientName = attendee.name || \"\";\n    const patientPhone = attendee.phoneNumber || \"\";\n    \n    // Extract appointment details\n    const startTime = new Date(webhook.startTime);\n    const appointmentDate = startTime.toISOString().split('T')[0]; // \"2025-11-04\"\n    const appointmentTime = startTime.toLocaleTimeString('en-US', { \n      hour: '2-digit', \n      minute: '2-digit',\n      hour12: true \n    }); // \"02:15 PM\"\n    \n    // Organizer is the doctor\n    const doctorName = webhook.organizer?.name || \"Dr. Jennifer\";\n    \n    // Appointment type from event description\n    const appointmentType = webhook.description || webhook.eventTitle || \"General Consultation\";\n    \n    // For reschedule: Get new time if available\n    let newDate = null;\n    let newTime = null;\n    \n    if (eventType === \"BOOKING_RESCHEDULED\" && webhook.rescheduleEndTime) {\n      const newStartTime = new Date(webhook.rescheduleEndTime);\n      newDate = newStartTime.toISOString().split('T')[0];\n      newTime = newStartTime.toLocaleTimeString('en-US', { \n        hour: '2-digit', \n        minute: '2-digit',\n        hour12: true \n      });\n    }\n    \n    console.log(`📅 ${eventType}: ${patientName} - ${appointmentDate} at ${appointmentTime}`);\n    \n    results.push({\n      json: {\n        eventType: eventType,\n        patientEmail: patientEmail,\n        patientName: patientName,\n        patientPhone: patientPhone,\n        appointmentDate: appointmentDate,\n        appointmentTime: appointmentTime,\n        doctorName: doctorName,\n        appointmentType: appointmentType,\n        bookingId: webhook.bookingId || webhook.uid,\n        // For reschedule\n        newDate: newDate,\n        newTime: newTime,\n        // Full webhook for reference\n        rawWebhook: webhook\n      }\n    });\n    \n  } catch (error) {\n    console.error(`❌ Error parsing Cal.com webhook:`, error.message);\n    results.push({\n      json: {\n        error: error.message,\n        rawData: item.json\n      }\n    });\n  }\n}\n\nreturn results;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-960, 400],
+      "id": "parse-webhook",
+      "name": "Parse Cal.com Webhook"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.eventType }}",
+                    "rightValue": "BOOKING_CANCELLED",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "cancelled"
+            },
+            {
+              "conditions": {
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.eventType }}",
+                    "rightValue": "BOOKING_RESCHEDULED",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "rescheduled"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.1,
+      "position": [-720, 400],
+      "id": "route-by-event",
+      "name": "Route by Event Type"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "1qwRj5vMXyrCiuAohIX-gcOmGK1M9Hc1BMLkK0vBE_3Y",
+          "mode": "list",
+          "cachedResultName": "Medical_Workflow"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Status": "Cancelled",
+            "Cancelled_At": "={{ $now }}",
+            "Cancelled_Via": "Cal.com",
+            "Cancellation_Reason": "Patient cancelled via Cal.com"
+          },
+          "matchingColumns": ["Patient_Email", "Date", "Time"]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [-480, 200],
+      "id": "update-cancelled-sheet",
+      "name": "Update Sheet: Cancelled",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "MFvqhvGA0i3KTij0",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "=debbiehills47@gmail.com",
+        "subject": "=❌ Cancellation Alert - {{ $json.patientName }}",
+        "emailType": "text",
+        "message": "=CANCELLATION NOTIFICATION (via Cal.com):\n\nPatient: {{ $json.patientName }}\nEmail: {{ $json.patientEmail }}\nPhone: {{ $json.patientPhone }}\nDate: {{ $json.appointmentDate }}\nTime: {{ $json.appointmentTime }}\nDoctor: {{ $json.doctorName }}\nType: {{ $json.appointmentType }}\nCancelled: {{ $now }} (via Cal.com)\nBooking ID: {{ $json.bookingId }}\n\nWaitlist notification has been triggered automatically.\n\n✅ Status updated in Google Sheets\n✅ Waitlist patients have been notified",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [-240, 200],
+      "id": "notify-staff-cancelled",
+      "name": "Staff: Cancellation Alert"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://izzydev.app.n8n.cloud/webhook/waitlist-notification",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "appointmentDate",
+              "value": "={{ $json.appointmentDate }}"
+            },
+            {
+              "name": "appointmentTime",
+              "value": "={{ $json.appointmentTime }}"
+            },
+            {
+              "name": "doctorName",
+              "value": "={{ $json.doctorName }}"
+            },
+            {
+              "name": "appointmentType",
+              "value": "={{ $json.appointmentType }}"
+            },
+            {
+              "name": "cancelledPatient",
+              "value": "={{ $json.patientName }}"
+            },
+            {
+              "name": "reason",
+              "value": "cancelled"
+            },
+            {
+              "name": "cancelledVia",
+              "value": "Cal.com"
+            },
+            {
+              "name": "bookingId",
+              "value": "={{ $json.bookingId }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [0, 200],
+      "id": "trigger-waitlist-cancel",
+      "name": "Trigger Waitlist (Cancellation)"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "1qwRj5vMXyrCiuAohIX-gcOmGK1M9Hc1BMLkK0vBE_3Y",
+          "mode": "list",
+          "cachedResultName": "Medical_Workflow"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Status": "Rescheduled",
+            "Rescheduled_At": "={{ $now }}",
+            "Rescheduled_Via": "Cal.com",
+            "New_Date": "={{ $json.newDate }}",
+            "New_Time": "={{ $json.newTime }}"
+          },
+          "matchingColumns": ["Patient_Email", "Date", "Time"]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [-480, 600],
+      "id": "update-rescheduled-sheet",
+      "name": "Update Sheet: Rescheduled",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "MFvqhvGA0i3KTij0",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "=debbiehills47@gmail.com",
+        "subject": "=🔄 Reschedule Alert - {{ $json.patientName }}",
+        "emailType": "text",
+        "message": "=RESCHEDULE NOTIFICATION (via Cal.com):\n\nPatient: {{ $json.patientName }}\nEmail: {{ $json.patientEmail }}\nPhone: {{ $json.patientPhone }}\n\nORIGINAL APPOINTMENT (NOW FREE):\nDate: {{ $json.appointmentDate }}\nTime: {{ $json.appointmentTime }}\nDoctor: {{ $json.doctorName }}\nType: {{ $json.appointmentType }}\n\nNEW APPOINTMENT:\nDate: {{ $json.newDate }}\nTime: {{ $json.newTime }}\n\nRescheduled: {{ $now }} (via Cal.com)\nBooking ID: {{ $json.bookingId }}\n\nWaitlist notification has been triggered for the freed slot.\n\n✅ Status updated in Google Sheets\n✅ Waitlist patients have been notified",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [-240, 600],
+      "id": "notify-staff-rescheduled",
+      "name": "Staff: Reschedule Alert"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://izzydev.app.n8n.cloud/webhook/waitlist-notification",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "appointmentDate",
+              "value": "={{ $json.appointmentDate }}"
+            },
+            {
+              "name": "appointmentTime",
+              "value": "={{ $json.appointmentTime }}"
+            },
+            {
+              "name": "doctorName",
+              "value": "={{ $json.doctorName }}"
+            },
+            {
+              "name": "appointmentType",
+              "value": "={{ $json.appointmentType }}"
+            },
+            {
+              "name": "rescheduledPatient",
+              "value": "={{ $json.patientName }}"
+            },
+            {
+              "name": "reason",
+              "value": "rescheduled"
+            },
+            {
+              "name": "rescheduledVia",
+              "value": "Cal.com"
+            },
+            {
+              "name": "bookingId",
+              "value": "={{ $json.bookingId }}"
+            },
+            {
+              "name": "newDate",
+              "value": "={{ $json.newDate }}"
+            },
+            {
+              "name": "newTime",
+              "value": "={{ $json.newTime }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [0, 600],
+      "id": "trigger-waitlist-reschedule",
+      "name": "Trigger Waitlist (Reschedule)"
+    }
+  ],
+  "connections": {
+    "Cal.com Trigger": {
+      "main": [
+        [
+          {
+            "node": "Parse Cal.com Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Cal.com Webhook": {
+      "main": [
+        [
+          {
+            "node": "Route by Event Type",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route by Event Type": {
+      "main": [
+        [
+          {
+            "node": "Update Sheet: Cancelled",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Update Sheet: Rescheduled",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Sheet: Cancelled": {
+      "main": [
+        [
+          {
+            "node": "Staff: Cancellation Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Staff: Cancellation Alert": {
+      "main": [
+        [
+          {
+            "node": "Trigger Waitlist (Cancellation)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Sheet: Rescheduled": {
+      "main": [
+        [
+          {
+            "node": "Staff: Reschedule Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Staff: Reschedule Alert": {
+      "main": [
+        [
+          {
+            "node": "Trigger Waitlist (Reschedule)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 1,
+  "updatedAt": "2025-01-30T00:00:00.000Z",
+  "versionId": "1"
+}

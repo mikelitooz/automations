@@ -1,0 +1,370 @@
+{
+  "name": "03 - CRM Sync & Pipeline",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "crm-sync",
+        "options": {}
+      },
+      "id": "webhook-crm",
+      "name": "Webhook - CRM Sync Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1.1,
+      "position": [250, 300],
+      "webhookId": "crm-sync"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 1
+            }
+          ]
+        }
+      },
+      "id": "schedule-sync",
+      "name": "Schedule - Hourly Sync",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [250, 480]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "action-check",
+              "leftValue": "={{ $json.action }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-action",
+      "name": "IF - Has Action",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [470, 300]
+    },
+    {
+      "parameters": {
+        "mode": "chooseBranch",
+        "output": "extra"
+      },
+      "id": "merge-triggers",
+      "name": "Merge - Sync Sources",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2.1,
+      "position": [470, 480]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "action-type",
+              "leftValue": "={{ $json.action }}",
+              "rightValue": "stage_update",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "switch-action",
+      "name": "Switch - Action Type",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [690, 200]
+    },
+    {
+      "parameters": {
+        "method": "PUT",
+        "url": "=http://api:3000/api/leads/{{ $json.leadId }}/stage",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"stage\": \"{{ $json.newStage }}\",\n  \"notes\": \"{{ $json.notes || 'Updated via CRM sync' }}\"\n}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "update-stage",
+      "name": "HTTP - Update Lead Stage",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [910, 100],
+      "retryOnFail": true,
+      "maxTries": 3
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "http://api:3000/api/leads",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "limit",
+              "value": "100"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "fetch-all-leads",
+      "name": "HTTP - Fetch All Leads",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [690, 480]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Process leads for sync status check\nconst response = $input.first().json;\nconst leads = response.data || [];\n\n// Identify leads needing attention\nconst needsAttention = leads.filter(lead => {\n  // Check for stale leads (no activity in 7 days)\n  const lastUpdate = new Date(lead.updatedAt);\n  const daysSinceUpdate = (Date.now() - lastUpdate.getTime()) / (1000 * 60 * 60 * 24);\n  \n  return (\n    daysSinceUpdate > 7 ||\n    (lead.qualificationStatus === 'pending' && daysSinceUpdate > 1) ||\n    (lead.score >= 70 && lead.pipelineStage === 'lead')\n  );\n});\n\n// Generate sync report\nconst report = {\n  totalLeads: leads.length,\n  needsAttention: needsAttention.length,\n  staleLeds: needsAttention.filter(l => {\n    const days = (Date.now() - new Date(l.updatedAt).getTime()) / (1000 * 60 * 60 * 24);\n    return days > 7;\n  }).length,\n  highScoreUnprocessed: needsAttention.filter(l => l.score >= 70 && l.pipelineStage === 'lead').length,\n  pendingQualification: needsAttention.filter(l => l.qualificationStatus === 'pending').length,\n  leadsNeedingAction: needsAttention.map(l => ({\n    id: l.id,\n    email: l.email,\n    score: l.score,\n    stage: l.pipelineStage,\n    reason: l.score >= 70 && l.pipelineStage === 'lead' ? 'High score, needs progression' : 'Stale lead'\n  })),\n  syncedAt: new Date().toISOString()\n};\n\nreturn report;"
+      },
+      "id": "analyze-sync",
+      "name": "Code - Analyze Sync Status",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [910, 480]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "needs-alert",
+              "leftValue": "={{ $json.needsAttention }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-alerts",
+      "name": "IF - Needs Alert",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1130, 480]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Generate alert notification\nconst report = $input.first().json;\n\nconst alert = {\n  type: 'crm_sync_alert',\n  severity: report.highScoreUnprocessed > 0 ? 'high' : 'medium',\n  title: `CRM Sync: ${report.needsAttention} leads need attention`,\n  summary: [\n    `${report.staleLeds} stale leads (no activity in 7+ days)`,\n    `${report.highScoreUnprocessed} high-score leads stuck in 'lead' stage`,\n    `${report.pendingQualification} leads pending qualification`\n  ].join('\\n'),\n  leads: report.leadsNeedingAction.slice(0, 10), // Top 10\n  timestamp: new Date().toISOString()\n};\n\nreturn alert;"
+      },
+      "id": "create-alert",
+      "name": "Code - Create Alert",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1350, 380]
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "status",
+              "value": "sync_complete"
+            }
+          ],
+          "boolean": [
+            {
+              "name": "alertSent",
+              "value": false
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "no-alert-needed",
+      "name": "Set - No Alert Needed",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.3,
+      "position": [1350, 580]
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "status",
+              "value": "stage_updated"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "stage-updated",
+      "name": "Set - Stage Updated",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.3,
+      "position": [1130, 100]
+    }
+  ],
+  "connections": {
+    "Webhook - CRM Sync Trigger": {
+      "main": [
+        [
+          {
+            "node": "IF - Has Action",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule - Hourly Sync": {
+      "main": [
+        [
+          {
+            "node": "Merge - Sync Sources",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Has Action": {
+      "main": [
+        [
+          {
+            "node": "Switch - Action Type",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "HTTP - Fetch All Leads",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge - Sync Sources": {
+      "main": [
+        [
+          {
+            "node": "HTTP - Fetch All Leads",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch - Action Type": {
+      "main": [
+        [
+          {
+            "node": "HTTP - Update Lead Stage",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP - Update Lead Stage": {
+      "main": [
+        [
+          {
+            "node": "Set - Stage Updated",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP - Fetch All Leads": {
+      "main": [
+        [
+          {
+            "node": "Code - Analyze Sync Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Analyze Sync Status": {
+      "main": [
+        [
+          {
+            "node": "IF - Needs Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Needs Alert": {
+      "main": [
+        [
+          {
+            "node": "Code - Create Alert",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Set - No Alert Needed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": "06-error-monitoring"
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "name": "crm",
+      "id": "5"
+    },
+    {
+      "name": "sync",
+      "id": "6"
+    }
+  ],
+  "meta": {
+    "instanceId": "autoscale-crm-hub"
+  }
+}

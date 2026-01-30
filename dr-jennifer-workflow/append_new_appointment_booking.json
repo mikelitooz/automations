@@ -1,0 +1,1251 @@
+{
+  "nodes": [
+    {
+      "parameters": {
+        "events": [
+          "BOOKING_CREATED",
+          "BOOKING_CANCELLED",
+          "BOOKING_RESCHEDULED"
+        ],
+        "options": {}
+      },
+      "type": "n8n-nodes-base.calTrigger",
+      "typeVersion": 2,
+      "position": [
+        -112,
+        512
+      ],
+      "id": "60a65648-2bc3-4061-88dd-539ab1c6c9ec",
+      "name": "Cal.com Trigger (All Events)",
+      "webhookId": "9bdf6030-7590-49e3-ae06-791425fa101b",
+      "credentials": {
+        "calApi": {
+          "id": "0kClI1PjxBFDOm6a",
+          "name": "Cal account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1qwRj5vMXyrCiuAohIX-gcOmGK1M9Hc1BMLkK0vBE_3Y",
+          "mode": "list",
+          "cachedResultName": "Medical_Workflow",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1qwRj5vMXyrCiuAohIX-gcOmGK1M9Hc1BMLkK0vBE_3Y/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "appointment",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1qwRj5vMXyrCiuAohIX-gcOmGK1M9Hc1BMLkK0vBE_3Y/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Appointment_Uid": "={{ $json.appointmentUid }}",
+            "Date": "={{ $json.appointmentDate }}",
+            "Time": "={{ $json.appointmentTime }}",
+            "ISO_Time_Format": "={{ new Date(Date.now() + 7 * 60 * 1000).toISOString() }}",
+            "Patient_Name": "={{ $json.patientName }}",
+            "Patient_Email": "={{ $json.patientEmail }}",
+            "Patient_Phone": "={{ $json.patientPhone }}",
+            "Doctor_Name": "={{ $json.doctorName }}",
+            "Appointment_Type": "={{ $json.appointmentType }}",
+            "Status": "Pending",
+            "48hr_Reminder_Sent": "FALSE",
+            "24hr_Reminder_Sent": "FALSE",
+            "2hr_Reminder_Sent": "FALSE"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Appointment_Uid",
+              "displayName": "Appointment_Uid",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Date",
+              "displayName": "Date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Time",
+              "displayName": "Time",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Patient_Name",
+              "displayName": "Patient_Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Patient_Phone",
+              "displayName": "Patient_Phone",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Patient_Email",
+              "displayName": "Patient_Email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Doctor_Name",
+              "displayName": "Doctor_Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Appointment_Type",
+              "displayName": "Appointment_Type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Status",
+              "displayName": "Status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "48hr_Reminder_Sent",
+              "displayName": "48hr_Reminder_Sent",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "24hr_Reminder_Sent",
+              "displayName": "24hr_Reminder_Sent",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "2hr_Reminder_Sent",
+              "displayName": "2hr_Reminder_Sent",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Confirmed_At",
+              "displayName": "Confirmed_At",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Confirmed_Via",
+              "displayName": "Confirmed_Via",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Cancelled_At",
+              "displayName": "Cancelled_At",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Cancelled_Via",
+              "displayName": "Cancelled_Via",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Cancellation_Reason",
+              "displayName": "Cancellation_Reason",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Rescheduled_At",
+              "displayName": "Rescheduled_At",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Rescheduled_Via",
+              "displayName": "Rescheduled_Via",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Staff_Alerted",
+              "displayName": "Staff_Alerted",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "ISO_Time_Format",
+              "displayName": "ISO_Time_Format",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "20hr_Voice_Call_Made",
+              "displayName": "20hr_Voice_Call_Made",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Voice_Call_Agent_Call_Summary",
+              "displayName": "Voice_Call_Agent_Call_Summary",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Voice_Call_Agent_Action_Taken",
+              "displayName": "Voice_Call_Agent_Action_Taken",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        688,
+        208
+      ],
+      "id": "1535f05b-353e-4f53-8025-eab6f384ebab",
+      "name": "Google Sheets: Append New Appointment",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "Gu4sptcmPE5XoUXG",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "1qwRj5vMXyrCiuAohIX-gcOmGK1M9Hc1BMLkK0vBE_3Y",
+          "mode": "list",
+          "cachedResultName": "Medical_Workflow"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "appointment",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1qwRj5vMXyrCiuAohIX-gcOmGK1M9Hc1BMLkK0vBE_3Y/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Status": "Cancelled",
+            "Cancelled_At": "={{ $now }}",
+            "Cancelled_Via": "Cal.com",
+            "Cancellation_Reason": "Patient cancelled via Cal.com",
+            "row_number": 0
+          },
+          "matchingColumns": [
+            "Appointment_Uid"
+          ],
+          "schema": [
+            {
+              "id": "Appointment_Uid",
+              "displayName": "Appointment_Uid",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Date",
+              "displayName": "Date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Time",
+              "displayName": "Time",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Patient_Name",
+              "displayName": "Patient_Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Patient_Phone",
+              "displayName": "Patient_Phone",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Patient_Email",
+              "displayName": "Patient_Email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Doctor_Name",
+              "displayName": "Doctor_Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Appointment_Type",
+              "displayName": "Appointment_Type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Status",
+              "displayName": "Status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "48hr_Reminder_Sent",
+              "displayName": "48hr_Reminder_Sent",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "24hr_Reminder_Sent",
+              "displayName": "24hr_Reminder_Sent",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "2hr_Reminder_Sent",
+              "displayName": "2hr_Reminder_Sent",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Confirmed_At",
+              "displayName": "Confirmed_At",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Confirmed_Via",
+              "displayName": "Confirmed_Via",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Cancelled_At",
+              "displayName": "Cancelled_At",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Cancelled_Via",
+              "displayName": "Cancelled_Via",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Cancellation_Reason",
+              "displayName": "Cancellation_Reason",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Rescheduled_At",
+              "displayName": "Rescheduled_At",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Rescheduled_Via",
+              "displayName": "Rescheduled_Via",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Staff_Alerted",
+              "displayName": "Staff_Alerted",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "ISO_Time_Format",
+              "displayName": "ISO_Time_Format",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "20hr_Voice_Call_Made",
+              "displayName": "20hr_Voice_Call_Made",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Voice_Call_Agent_Call_Summary",
+              "displayName": "Voice_Call_Agent_Call_Summary",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Voice_Call_Agent_Action_Taken",
+              "displayName": "Voice_Call_Agent_Action_Taken",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "row_number",
+              "displayName": "row_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "readOnly": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        688,
+        512
+      ],
+      "id": "30cd5aa0-da7d-4271-9eb9-eb9a73f4e417",
+      "name": "Google Sheets: Update Cancelled",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "Gu4sptcmPE5XoUXG",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "=apolloalpha57@gmail.com",
+        "subject": "=❌ Cancellation Alert - {{ $json.patientName }}",
+        "emailType": "text",
+        "message": "=CANCELLATION NOTIFICATION (via Cal.com):\n\nPatient: {{ $json.patientName }}\nEmail: {{ $json.patientEmail }}\nPhone: {{ $json.patientPhone }}\nDate: {{ $json.appointmentDate }}\nTime: {{ $json.appointmentTime }}\nDoctor: {{ $json.doctorName }}\nType: {{ $json.appointmentType }}\nCancelled: {{ $now }} (via Cal.com)\nBooking ID: {{ $json.bookingId }}\n\nWaitlist notification has been triggered automatically.\n\n✅ Status updated in Google Sheets\n✅ Waitlist patients have been notified",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        928,
+        512
+      ],
+      "id": "bad25ea7-c3cc-4097-acbb-25d0f19c75a4",
+      "name": "Gmail: Staff Cancellation Alert",
+      "webhookId": "4e62fbf6-e3b1-4d91-9bec-5c19b1792786",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "jg90AbaYwktTrzdN",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://apollo-alpha.app.n8n.cloud/webhook-test/waitlist-notification",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "appointmentDate",
+              "value": "={{ $json.appointmentDate }}"
+            },
+            {
+              "name": "appointmentTime",
+              "value": "={{ $json.appointmentTime }}"
+            },
+            {
+              "name": "doctorName",
+              "value": "={{ $json.doctorName }}"
+            },
+            {
+              "name": "appointmentType",
+              "value": "={{ $json.appointmentType }}"
+            },
+            {
+              "name": "cancelledPatient",
+              "value": "={{ $json.patientName }}"
+            },
+            {
+              "name": "reason",
+              "value": "cancelled"
+            },
+            {
+              "name": "cancelledVia",
+              "value": "Cal.com"
+            },
+            {
+              "name": "bookingId",
+              "value": "={{ $json.bookingId }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1168,
+        512
+      ],
+      "id": "708c33b1-5de9-45b2-bef9-2324c641c194",
+      "name": "HTTP: Trigger Waitlist (Cancellation)"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "1qwRj5vMXyrCiuAohIX-gcOmGK1M9Hc1BMLkK0vBE_3Y",
+          "mode": "list",
+          "cachedResultName": "Medical_Workflow"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "appointment",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1qwRj5vMXyrCiuAohIX-gcOmGK1M9Hc1BMLkK0vBE_3Y/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Status": "Rescheduled",
+            "Rescheduled_At": "={{ $now }}",
+            "Rescheduled_Via": "Cal.com",
+            "row_number": 0
+          },
+          "matchingColumns": [
+            "Appointment_Uid"
+          ],
+          "schema": [
+            {
+              "id": "Appointment_Uid",
+              "displayName": "Appointment_Uid",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Date",
+              "displayName": "Date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Time",
+              "displayName": "Time",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Patient_Name",
+              "displayName": "Patient_Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Patient_Phone",
+              "displayName": "Patient_Phone",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Patient_Email",
+              "displayName": "Patient_Email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Doctor_Name",
+              "displayName": "Doctor_Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Appointment_Type",
+              "displayName": "Appointment_Type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Status",
+              "displayName": "Status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "48hr_Reminder_Sent",
+              "displayName": "48hr_Reminder_Sent",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "24hr_Reminder_Sent",
+              "displayName": "24hr_Reminder_Sent",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "2hr_Reminder_Sent",
+              "displayName": "2hr_Reminder_Sent",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Confirmed_At",
+              "displayName": "Confirmed_At",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Confirmed_Via",
+              "displayName": "Confirmed_Via",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Cancelled_At",
+              "displayName": "Cancelled_At",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Cancelled_Via",
+              "displayName": "Cancelled_Via",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Cancellation_Reason",
+              "displayName": "Cancellation_Reason",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Rescheduled_At",
+              "displayName": "Rescheduled_At",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Rescheduled_Via",
+              "displayName": "Rescheduled_Via",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Staff_Alerted",
+              "displayName": "Staff_Alerted",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "ISO_Time_Format",
+              "displayName": "ISO_Time_Format",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "20hr_Voice_Call_Made",
+              "displayName": "20hr_Voice_Call_Made",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Voice_Call_Agent_Call_Summary",
+              "displayName": "Voice_Call_Agent_Call_Summary",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Voice_Call_Agent_Action_Taken",
+              "displayName": "Voice_Call_Agent_Action_Taken",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "row_number",
+              "displayName": "row_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "readOnly": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        688,
+        816
+      ],
+      "id": "a77b0416-b43f-44fe-9a66-2bf5fbf77d58",
+      "name": "Google Sheets: Update Rescheduled",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "Gu4sptcmPE5XoUXG",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "=apolloalpha57@gmail.com",
+        "subject": "=🔄 Reschedule Alert - {{ $json.patientName }}",
+        "emailType": "text",
+        "message": "=RESCHEDULE NOTIFICATION (via Cal.com):\n\nPatient: {{ $json.patientName }}\nEmail: {{ $json.patientEmail }}\nPhone: {{ $json.patientPhone }}\n\nORIGINAL APPOINTMENT (NOW FREE):\nDate: {{ $json.appointmentDate }}\nTime: {{ $json.appointmentTime }}\nDoctor: {{ $json.doctorName }}\nType: {{ $json.appointmentType }}\n\nNEW APPOINTMENT:\nDate: {{ $json.newDate }}\nTime: {{ $json.newTime }}\n\nRescheduled: {{ $now }} (via Cal.com)\nBooking ID: {{ $json.bookingId }}\n\nWaitlist notification has been triggered for the freed slot.\n\n✅ Status updated in Google Sheets\n✅ Waitlist patients have been notified",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        928,
+        816
+      ],
+      "id": "334c9920-b402-4559-a81b-df977e711997",
+      "name": "Gmail: Staff Reschedule Alert",
+      "webhookId": "fa3419b3-4ac1-485b-8c93-681da3800536",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "jg90AbaYwktTrzdN",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://apollo-alpha.app.n8n.cloud/webhook-test/waitlist-notification",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "appointmentDate",
+              "value": "={{ $json.appointmentDate }}"
+            },
+            {
+              "name": "appointmentTime",
+              "value": "={{ $json.appointmentTime }}"
+            },
+            {
+              "name": "doctorName",
+              "value": "={{ $json.doctorName }}"
+            },
+            {
+              "name": "appointmentType",
+              "value": "={{ $json.appointmentType }}"
+            },
+            {
+              "name": "rescheduledPatient",
+              "value": "={{ $json.patientName }}"
+            },
+            {
+              "name": "reason",
+              "value": "rescheduled"
+            },
+            {
+              "name": "rescheduledVia",
+              "value": "Cal.com"
+            },
+            {
+              "name": "bookingId",
+              "value": "={{ $json.bookingId }}"
+            },
+            {
+              "name": "newDate",
+              "value": "={{ $json.newDate }}"
+            },
+            {
+              "name": "newTime",
+              "value": "={{ $json.newTime }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1168,
+        816
+      ],
+      "id": "72eff348-8261-48b1-b93a-3fe8f36a11db",
+      "name": "HTTP: Trigger Waitlist (Reschedule)"
+    },
+    {
+      "parameters": {
+        "content": "**CAL.COM UNIFIED EVENT HANDLER**\n\nHandles complete appointment lifecycle:\n✅ BOOKING_CREATED → Append to Google Sheets\n✅ BOOKING_CANCELLED → Update status + Trigger waitlist\n✅ BOOKING_RESCHEDULED → Update status + Trigger waitlist\n\nAll Cal.com events managed in one workflow!",
+        "height": 1032,
+        "width": 1704,
+        "color": 6
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -176,
+        96
+      ],
+      "typeVersion": 1,
+      "id": "53ec3c82-736f-40d6-8dc2-2d872364ea6d",
+      "name": "Sticky Note: Overview"
+    },
+    {
+      "parameters": {
+        "jsCode": "/**\n * Unified Cal.com Webhook Parser\n * Handles BOOKING_CREATED, BOOKING_CANCELLED, BOOKING_RESCHEDULED\n */\n\nconst results = [];\n\nfor (const item of $input.all()) {\n  try {\n    const webhook = item.json;\n    \n    // Determine event type\n    const eventType = webhook.triggerEvent;\n    \n    // Extract attendee info (patient)\n    const attendee = webhook.attendees && webhook.attendees[0] ? webhook.attendees[0] : {};\n    const patientEmail = attendee.email || \"\";\n    const patientName = attendee.name || \"\";\n    const patientPhone = attendee.phoneNumber || \"\";\n    \n    // Extract appointment details\n    const startTime = new Date(webhook.startTime);\n    \n    // Human-readable formats\n    const humanDate = startTime.toLocaleDateString('en-US', {\n      weekday: 'long',\n      month: 'long',\n      day: 'numeric',\n    });\n    const humanTime = startTime.toLocaleTimeString('en-US', {\n      hour: '2-digit',\n      minute: '2-digit',\n      hour12: true\n    });\n    \n    // ISO format for scheduling\n    const isoTimeFormat = webhook.startTime;\n    \n    // Extract doctor name from title/organizer\n    const doctorMatch = webhook.eventTitle?.match(/Dr\\.?\\s*\\w+/i);\n    const doctorName = doctorMatch ? doctorMatch[0].trim() : (webhook.organizer?.name || \"Dr. Jennifer\");\n    \n    // Appointment type\n    const appointmentType = webhook.userFieldsResponses?.appointmentType?.value || \n                           webhook.responses?.appointmentType?.value || \n                           webhook.description || \n                           \"Consultation\";\n    \n    // For reschedule: Get new time if available\n    let newDate = null;\n    let newTime = null;\n    let newIsoTime = null;\n    \n    if (eventType === \"BOOKING_RESCHEDULED\" && webhook.rescheduleEndTime) {\n      const newStartTime = new Date(webhook.rescheduleEndTime);\n      newDate = newStartTime.toLocaleDateString('en-US', {\n        weekday: 'long',\n        month: 'long',\n        day: 'numeric',\n      });\n      newTime = newStartTime.toLocaleTimeString('en-US', {\n        hour: '2-digit',\n        minute: '2-digit',\n        hour12: true\n      });\n      newIsoTime = webhook.rescheduleEndTime;\n    }\n    \n    console.log(`📅 ${eventType}: ${patientName} - ${humanDate} at ${humanTime}`);\n    \n    results.push({\n      json: {\n        // Event metadata\n        eventType: eventType,\n        bookingId: webhook.bookingId || webhook.uid,\n        appointmentUid: webhook.uid,\n        \n        // Patient info\n        patientEmail: patientEmail,\n        patientName: patientName,\n        patientPhone: patientPhone,\n        \n        // Appointment details (original/current)\n        appointmentDate: humanDate,\n        appointmentTime: humanTime,\n        isoTimeFormat: isoTimeFormat,\n        doctorName: doctorName,\n        appointmentType: appointmentType,\n        \n        // For reschedule: new appointment details\n        newDate: newDate,\n        newTime: newTime,\n        newIsoTime: newIsoTime,\n        \n        // Full webhook for reference\n        rawWebhook: webhook\n      }\n    });\n    \n  } catch (error) {\n    console.error(`❌ Error parsing Cal.com webhook:`, error.message);\n    results.push({\n      json: {\n        error: error.message,\n        rawData: item.json\n      }\n    });\n  }\n}\n\nreturn results;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        160,
+        512
+      ],
+      "id": "e149278b-7244-4b1a-953e-935504f0a293",
+      "name": "Parse Cal.com Webhook1"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.eventType }}",
+                    "rightValue": "BOOKING_CREATED",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "created"
+            },
+            {
+              "conditions": {
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.eventType }}",
+                    "rightValue": "BOOKING_CANCELLED",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "cancelled"
+            },
+            {
+              "conditions": {
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.eventType }}",
+                    "rightValue": "BOOKING_RESCHEDULED",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "rescheduled"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.1,
+      "position": [
+        448,
+        512
+      ],
+      "id": "e600479c-92d4-49a6-9249-643afdcffce4",
+      "name": "Route by Event Type1"
+    }
+  ],
+  "connections": {
+    "Cal.com Trigger (All Events)": {
+      "main": [
+        [
+          {
+            "node": "Parse Cal.com Webhook1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Sheets: Update Cancelled": {
+      "main": [
+        [
+          {
+            "node": "Gmail: Staff Cancellation Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail: Staff Cancellation Alert": {
+      "main": [
+        [
+          {
+            "node": "HTTP: Trigger Waitlist (Cancellation)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Sheets: Update Rescheduled": {
+      "main": [
+        [
+          {
+            "node": "Gmail: Staff Reschedule Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail: Staff Reschedule Alert": {
+      "main": [
+        [
+          {
+            "node": "HTTP: Trigger Waitlist (Reschedule)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Cal.com Webhook1": {
+      "main": [
+        [
+          {
+            "node": "Route by Event Type1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route by Event Type1": {
+      "main": [
+        [
+          {
+            "node": "Google Sheets: Append New Appointment",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Google Sheets: Update Cancelled",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Google Sheets: Update Rescheduled",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "7b3125be3eb2b56ab7606a684daa96104964f42d4c53676367f2a84787aca813"
+  }
+}

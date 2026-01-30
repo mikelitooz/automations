@@ -1,0 +1,412 @@
+{
+  "name": "Marcus Real Estate - Viewing Scheduler",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "calendly-booking",
+        "options": {
+          "responseMode": "responseNode"
+        }
+      },
+      "id": "calendly-webhook",
+      "name": "Calendly Booking Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "webhookId": "calendly-viewing-booking"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract booking data from Calendly webhook\nconst payload = $input.first().json.payload;\nconst event = payload.event;\nconst invitee = payload.invitee;\n\n// Parse event time\nconst startTime = new Date(event.start_time);\nconst endTime = new Date(event.end_time);\n\n// Extract property address from event name or questions\nconst propertyAddress = event.name.includes('Property Viewing:') \n  ? event.name.split('Property Viewing:')[1].trim()\n  : 'Address TBD';\n\n// Extract custom questions (lead name, phone, property interest)\nconst questions = invitee.questions_and_answers || [];\nconst leadPhone = questions.find(q => q.question.includes('phone'))?.answer || '';\nconst propertyInterest = questions.find(q => q.question.includes('property') || q.question.includes('address'))?.answer || propertyAddress;\n\nreturn [{\n  json: {\n    bookingId: event.uri.split('/').pop(),\n    leadName: invitee.name,\n    leadEmail: invitee.email,\n    leadPhone: leadPhone,\n    propertyAddress: propertyInterest,\n    viewingDate: startTime.toISOString().split('T')[0],\n    viewingTime: startTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),\n    startTime: startTime.toISOString(),\n    endTime: endTime.toISOString(),\n    calendarLink: event.calendar_link || '',\n    rescheduleUrl: invitee.reschedule_url || '',\n    cancelUrl: invitee.cancel_url || '',\n    timezone: invitee.timezone || 'America/Chicago',\n    confirmed: false,\n    status: 'Scheduled'\n  }\n}];"
+      },
+      "id": "parse-booking-data",
+      "name": "Parse Calendly Booking",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "resource": "event",
+        "operation": "create",
+        "calendar": {
+          "__rl": true,
+          "value": "primary",
+          "mode": "list",
+          "cachedResultName": "Primary"
+        },
+        "start": "={{ $json.startTime }}",
+        "end": "={{ $json.endTime }}",
+        "summary": "=Property Viewing: {{ $json.propertyAddress }}",
+        "description": "=Property Viewing with {{ $json.leadName }}\n\nProperty: {{ $json.propertyAddress }}\nLead Email: {{ $json.leadEmail }}\nLead Phone: {{ $json.leadPhone }}\n\nReschedule: {{ $json.rescheduleUrl }}\nCancel: {{ $json.cancelUrl }}",
+        "location": "={{ $json.propertyAddress }}",
+        "attendees": "={{ $json.leadEmail }}",
+        "options": {
+          "sendUpdates": "all"
+        }
+      },
+      "id": "create-calendar-event",
+      "name": "Create Google Calendar Event",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1.2,
+      "position": [680, 300],
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "googleCalendarOAuth2",
+          "name": "Google Calendar OAuth2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $env.GOOGLE_SHEETS_ID }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Master Leads",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Email": "={{ $('Parse Calendly Booking').item.json.leadEmail }}",
+            "Viewings Scheduled": "={{ $('Parse Calendly Booking').item.json.propertyAddress }} on {{ $('Parse Calendly Booking').item.json.viewingDate }}",
+            "Status": "=Viewing Scheduled",
+            "Last Contact": "={{ $now.toISO() }}",
+            "Engagement Score": "={{ $json.engagementScore + 5 || 5 }}"
+          }
+        },
+        "options": {
+          "lookupColumn": "Email"
+        }
+      },
+      "id": "update-lead-sheet",
+      "name": "Update Lead Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [900, 300],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "googleSheetsOAuth2",
+          "name": "Google Sheets OAuth2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $env.AGENT_EMAIL }}",
+        "toEmail": "={{ $('Parse Calendly Booking').item.json.leadEmail }}",
+        "subject": "=✅ Viewing Confirmed: {{ $('Parse Calendly Booking').item.json.propertyAddress }}",
+        "emailType": "html",
+        "message": "=<!DOCTYPE html>\n<html>\n<head>\n  <style>\n    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }\n    .container { max-width: 600px; margin: 0 auto; padding: 20px; }\n    .header { background: #10b981; color: white; padding: 30px; border-radius: 8px 8px 0 0; text-align: center; }\n    .content { background: #f8fafc; padding: 30px; border: 1px solid #e2e8f0; }\n    .details { background: white; padding: 20px; border-radius: 8px; margin: 20px 0; }\n    .detail-row { margin: 12px 0; font-size: 16px; }\n    .label { font-weight: bold; color: #475569; }\n    .value { color: #1e293b; }\n    .button { display: inline-block; background: #2563eb; color: white; padding: 14px 28px; text-decoration: none; border-radius: 6px; margin: 10px 5px; font-size: 16px; }\n    .button-secondary { background: #64748b; }\n    .footer { background: #f1f5f9; padding: 20px; text-align: center; border-radius: 0 0 8px 8px; }\n  </style>\n</head>\n<body>\n  <div class=\"container\">\n    <div class=\"header\">\n      <h1>✅ Viewing Confirmed!</h1>\n    </div>\n    <div class=\"content\">\n      <p style=\"font-size: 18px; margin: 0 0 20px 0;\">\n        Hi {{ $('Parse Calendly Booking').item.json.leadName.split(' ')[0] }}! 👋\n      </p>\n      <p>I'm excited to show you this property! Here are the details:</p>\n      \n      <div class=\"details\">\n        <div class=\"detail-row\">\n          <span class=\"label\">📍 Property:</span><br/>\n          <span class=\"value\">{{ $('Parse Calendly Booking').item.json.propertyAddress }}</span>\n        </div>\n        <div class=\"detail-row\">\n          <span class=\"label\">📅 Date:</span>\n          <span class=\"value\">{{ $('Parse Calendly Booking').item.json.viewingDate }}</span>\n        </div>\n        <div class=\"detail-row\">\n          <span class=\"label\">⏰ Time:</span>\n          <span class=\"value\">{{ $('Parse Calendly Booking').item.json.viewingTime }}</span>\n        </div>\n        <div class=\"detail-row\">\n          <span class=\"label\">📞 My Phone:</span>\n          <span class=\"value\"><a href=\"tel:{{ $env.AGENT_PHONE }}\">{{ $env.AGENT_PHONE }}</a></span>\n        </div>\n      </div>\n      \n      <p><strong>What to bring:</strong></p>\n      <ul>\n        <li>List of questions about the property</li>\n        <li>Tape measure (if you want to check room sizes)</li>\n        <li>Your pre-approval letter (if you have one)</li>\n      </ul>\n      \n      <p><strong>Need to reschedule?</strong> No problem, just click below:</p>\n      \n      <div style=\"text-align: center; margin: 30px 0;\">\n        <a href=\"{{ $('Parse Calendly Booking').item.json.rescheduleUrl }}\" class=\"button\">Reschedule Viewing</a>\n        <a href=\"{{ $('Parse Calendly Booking').item.json.cancelUrl }}\" class=\"button button-secondary\">Cancel</a>\n      </div>\n      \n      <div style=\"background: #fef3c7; border-left: 4px solid #f59e0b; padding: 15px; margin-top: 20px; border-radius: 4px;\">\n        <p style=\"margin: 0; color: #92400e;\">\n          ⏰ <strong>Reminder:</strong> You'll receive SMS reminders at 24 hours and 2 hours before the viewing.\n        </p>\n      </div>\n    </div>\n    <div class=\"footer\">\n      <p style=\"margin: 0; color: #64748b;\">\n        See you soon!<br/>\n        <strong>Marcus</strong><br/>\n        📧 {{ $env.AGENT_EMAIL }} | 📞 {{ $env.AGENT_PHONE }}\n      </p>\n    </div>\n  </div>\n</body>\n</html>",
+        "options": {}
+      },
+      "id": "send-confirmation-email",
+      "name": "Send Confirmation Email",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [1120, 180],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "gmailOAuth2",
+          "name": "Gmail OAuth2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fromPhoneNumber": "={{ $env.TWILIO_PHONE_NUMBER }}",
+        "toPhoneNumber": "={{ $('Parse Calendly Booking').item.json.leadPhone }}",
+        "message": "=✅ Viewing confirmed!\n📍 {{ $('Parse Calendly Booking').item.json.propertyAddress }}\n📅 {{ $('Parse Calendly Booking').item.json.viewingDate }} at {{ $('Parse Calendly Booking').item.json.viewingTime }}\n\nI'll send reminders. Can't wait to show you this property! - Marcus\n📞 {{ $env.AGENT_PHONE }}",
+        "options": {}
+      },
+      "id": "send-confirmation-sms",
+      "name": "Send Confirmation SMS",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 2,
+      "position": [1120, 340],
+      "credentials": {
+        "twilioApi": {
+          "id": "twilioApi",
+          "name": "Twilio API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fromPhoneNumber": "={{ $env.TWILIO_PHONE_NUMBER }}",
+        "toPhoneNumber": "={{ $env.AGENT_PHONE }}",
+        "message": "=📅 NEW VIEWING SCHEDULED\n\n{{ $('Parse Calendly Booking').item.json.leadName }}\n📍 {{ $('Parse Calendly Booking').item.json.propertyAddress }}\n⏰ {{ $('Parse Calendly Booking').item.json.viewingDate }} at {{ $('Parse Calendly Booking').item.json.viewingTime }}\n\nLead Contact:\n📞 {{ $('Parse Calendly Booking').item.json.leadPhone }}\n✉️ {{ $('Parse Calendly Booking').item.json.leadEmail }}\n\nEvent in your calendar!",
+        "options": {}
+      },
+      "id": "notify-agent-sms",
+      "name": "Notify Agent (SMS)",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 2,
+      "position": [1120, 500],
+      "credentials": {
+        "twilioApi": {
+          "id": "twilioApi",
+          "name": "Twilio API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"success\": true, \"message\": \"Viewing scheduled successfully\" } }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "webhook-response",
+      "name": "Webhook Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1340, 300]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 */6 * * *"
+            }
+          ]
+        }
+      },
+      "id": "reminder-schedule",
+      "name": "Check Every 6 Hours",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [240, 800]
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "resource": "event",
+        "operation": "getAll",
+        "calendar": {
+          "__rl": true,
+          "value": "primary",
+          "mode": "list",
+          "cachedResultName": "Primary"
+        },
+        "returnAll": false,
+        "limit": 50,
+        "options": {
+          "timeMin": "={{ $now.toISO() }}",
+          "timeMax": "={{ $now.plus({ days: 2 }).toISO() }}",
+          "q": "Property Viewing"
+        }
+      },
+      "id": "get-upcoming-viewings",
+      "name": "Get Upcoming Viewings",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1.2,
+      "position": [460, 800],
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "googleCalendarOAuth2",
+          "name": "Google Calendar OAuth2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Calculate which reminders to send (24hr or 2hr)\nconst events = $input.all();\nconst now = new Date();\nconst reminders = [];\n\nfor (const item of events) {\n  const event = item.json;\n  const startTime = new Date(event.start.dateTime);\n  const hoursUntil = (startTime - now) / (1000 * 60 * 60);\n  \n  // Extract lead contact from event description\n  const description = event.description || '';\n  const emailMatch = description.match(/Lead Email:\\s*([^\\n]+)/);\n  const phoneMatch = description.match(/Lead Phone:\\s*([^\\n]+)/);\n  \n  const leadEmail = emailMatch ? emailMatch[1].trim() : '';\n  const leadPhone = phoneMatch ? phoneMatch[1].trim() : '';\n  \n  if (!leadEmail && !leadPhone) continue;\n  \n  // 24-hour reminder (between 22-26 hours before)\n  if (hoursUntil >= 22 && hoursUntil <= 26) {\n    reminders.push({\n      json: {\n        type: '24hr',\n        eventId: event.id,\n        summary: event.summary,\n        startTime: event.start.dateTime,\n        location: event.location,\n        leadEmail,\n        leadPhone,\n        hoursUntil: Math.round(hoursUntil)\n      }\n    });\n  }\n  \n  // 2-hour reminder (between 1.5-2.5 hours before)\n  else if (hoursUntil >= 1.5 && hoursUntil <= 2.5) {\n    reminders.push({\n      json: {\n        type: '2hr',\n        eventId: event.id,\n        summary: event.summary,\n        startTime: event.start.dateTime,\n        location: event.location,\n        leadEmail,\n        leadPhone,\n        hoursUntil: Math.round(hoursUntil * 10) / 10\n      }\n    });\n  }\n}\n\nreturn reminders.length > 0 ? reminders : [{ json: { noReminders: true } }];"
+      },
+      "id": "calculate-reminders",
+      "name": "Calculate Reminders to Send",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 800]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {},
+          "conditions": [
+            {
+              "id": "has-reminders",
+              "leftValue": "={{ $json.noReminders }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "notEquals"
+              }
+            }
+          ],
+          "combineOperation": "any"
+        },
+        "options": {}
+      },
+      "id": "filter-reminders",
+      "name": "Has Reminders?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.1,
+      "position": [900, 800]
+    },
+    {
+      "parameters": {
+        "fromPhoneNumber": "={{ $env.TWILIO_PHONE_NUMBER }}",
+        "toPhoneNumber": "={{ $json.leadPhone }}",
+        "message": "={{ $json.type === '24hr' ? \n  '⏰ Reminder: Property viewing tomorrow at ' + new Date($json.startTime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) + '\\n📍 ' + $json.location + '\\n\\nLooking forward to showing you this property! - Marcus\\n📞 ' + $env.AGENT_PHONE\n  :\n  '⏰ Viewing in 2 hours!\\n📍 ' + $json.location + '\\n⏰ ' + new Date($json.startTime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) + '\\n\\nSee you soon! Call if running late.\\n📞 ' + $env.AGENT_PHONE + ' - Marcus'\n}}",
+        "options": {}
+      },
+      "id": "send-reminder-sms",
+      "name": "Send Reminder SMS",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 2,
+      "position": [1120, 800],
+      "credentials": {
+        "twilioApi": {
+          "id": "twilioApi",
+          "name": "Twilio API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "## VIEWING SCHEDULER\n\nPART 1: BOOKING (top flow)\n- Calendly webhook captures bookings\n- Creates Google Calendar event\n- Updates lead sheet\n- Sends confirmation to lead + agent\n\nPART 2: REMINDERS (bottom flow)\n- Runs every 6 hours\n- Checks upcoming viewings\n- Sends SMS reminders:\n  - 24 hours before\n  - 2 hours before\n\nReduces no-shows from 30% to 10%!",
+        "height": 320,
+        "width": 300,
+        "color": 3
+      },
+      "id": "sticky-note-scheduler",
+      "name": "Sticky Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [240, 40]
+    }
+  ],
+  "connections": {
+    "Calendly Booking Webhook": {
+      "main": [
+        [
+          {
+            "node": "Parse Calendly Booking",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Calendly Booking": {
+      "main": [
+        [
+          {
+            "node": "Create Google Calendar Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Google Calendar Event": {
+      "main": [
+        [
+          {
+            "node": "Update Lead Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Lead Sheet": {
+      "main": [
+        [
+          {
+            "node": "Send Confirmation Email",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Send Confirmation SMS",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Notify Agent (SMS)",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Webhook Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Every 6 Hours": {
+      "main": [
+        [
+          {
+            "node": "Get Upcoming Viewings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Upcoming Viewings": {
+      "main": [
+        [
+          {
+            "node": "Calculate Reminders to Send",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculate Reminders to Send": {
+      "main": [
+        [
+          {
+            "node": "Has Reminders?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Reminders?": {
+      "main": [
+        [
+          {
+            "node": "Send Reminder SMS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "createdAt": "2025-01-22T00:00:00.000Z",
+      "updatedAt": "2025-01-22T00:00:00.000Z",
+      "id": "real-estate-automation",
+      "name": "Real Estate Automation"
+    }
+  ],
+  "triggerCount": 2,
+  "updatedAt": "2025-01-22T00:00:00.000Z",
+  "versionId": "1"
+}

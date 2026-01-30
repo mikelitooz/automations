@@ -1,0 +1,41 @@
+# Ignore environment files with secrets
+.env
+.env.local
+.env.*.local
+
+# Node modules
+node_modules/
+api/node_modules/
+tests/node_modules/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# Docker volumes (if running locally)
+postgres_data/
+redis_data/
+n8n_data/
+
+# Test results
+test-results/
+playwright-report/
+tests/test-results/
+tests/playwright-report/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+dist/
+build/
+
+# Coverage
+coverage/

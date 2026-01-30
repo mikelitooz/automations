@@ -1,0 +1,504 @@
+{
+  "name": "Clinic Website Chatbot - AI Assistant",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "clinic-chatbot",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -1440,
+        528
+      ],
+      "id": "86f64567-fc87-44a2-9099-b2d5d2ae4622",
+      "name": "Webhook: Chat Message",
+      "webhookId": "clinic-chatbot"
+    },
+    {
+      "parameters": {
+        "jsCode": "/**\n * Extract and validate chat message from webhook\n * \n * Expected format:\n * {\n *   \"message\": \"What are your office hours?\",\n *   \"sessionId\": \"session_abc123\",\n *   \"userName\": \"John\" (optional)\n * }\n */\n\nconst webhookData = $input.first().json;\n\n// Extract message\nconst userMessage = webhookData.message || webhookData.query || webhookData.text || \"\";\nconst sessionId = webhookData.sessionId || webhookData.session_id || `session_${Date.now()}`;\nconst userName = webhookData.userName || webhookData.user_name || \"there\";\n\n// Validate message\nif (!userMessage || userMessage.trim() === \"\") {\n  return [{\n    json: {\n      error: true,\n      response: \"I didn't receive a message. Please ask me a question about Dr. Jennifer's clinic!\",\n      sessionId: sessionId\n    }\n  }];\n}\n\n// Check for common greetings\nconst greetings = [\"hi\", \"hello\", \"hey\", \"good morning\", \"good afternoon\", \"good evening\"];\nconst messageLower = userMessage.toLowerCase().trim();\nconst isGreeting = greetings.some(greeting => messageLower === greeting || messageLower.startsWith(greeting + \" \"));\n\nconsole.log(`\n💬 Chat Message Received:\n  - Session: ${sessionId}\n  - User: ${userName}\n  - Message: ${userMessage}\n  - Is Greeting: ${isGreeting}\n`);\n\nreturn [{\n  json: {\n    userMessage: userMessage,\n    sessionId: sessionId,\n    userName: userName,\n    isGreeting: isGreeting,\n    timestamp: new Date().toISOString(),\n    error: false\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1216,
+        528
+      ],
+      "id": "e6804205-bd6b-49d8-8f82-e5e0aa56930f",
+      "name": "Parse Chat Message"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "leftValue": "={{ $json.error }}",
+              "rightValue": "true",
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -992,
+        528
+      ],
+      "id": "7e8cf19d-3da1-43b9-80f2-a587dee5f78b",
+      "name": "Valid Message?"
+    },
+    {
+      "parameters": {
+        "operation": "readFile",
+        "filePath": "=c:\\Users\\DELL\\Desktop\\projects\\automation\\dr-jennifer-workflow\\CLINIC_CHATBOT_KNOWLEDGE_BASE.md",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1,
+      "position": [
+        -696,
+        528
+      ],
+      "id": "c7715f32-3298-4a45-a341-8b3484ed9d4e",
+      "name": "Read Knowledge Base",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-4o",
+          "cachedResultName": "gpt-4o"
+        },
+        "options": {
+          "temperature": 0.7,
+          "maxTokens": 1000
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        -1440,
+        -288
+      ],
+      "id": "ebfca43c-03d1-4b6f-bf32-b11381d95ac8",
+      "name": "OpenAI Chat Model (GPT-4o)",
+      "credentials": {}
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ $('Parse Chat Message').item.json.sessionId }}",
+        "contextWindowLength": 10
+      },
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.4,
+      "position": [
+        -1440,
+        -80
+      ],
+      "id": "f99267a6-f338-4e8c-afe5-84212e3be6f9",
+      "name": "Chat Memory (10 messages)"
+    },
+    {
+      "parameters": {
+        "jsonMode": "expressionData",
+        "jsonData": "={{ $json.data }}",
+        "textSplittingMode": "custom",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.documentDefaultDataLoader",
+      "typeVersion": 1.1,
+      "position": [
+        -1232,
+        944
+      ],
+      "id": "bfd75287-ec2e-45c3-ae14-93f33daa1c17",
+      "name": "Load Knowledge Base Document"
+    },
+    {
+      "parameters": {
+        "chunkSize": 2000,
+        "chunkOverlap": 200,
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.textSplitterRecursiveCharacterTextSplitter",
+      "typeVersion": 1,
+      "position": [
+        -1440,
+        944
+      ],
+      "id": "a38ab5e3-11fe-43e2-8689-7ebe5bc3ffff",
+      "name": "Split into Chunks"
+    },
+    {
+      "parameters": {
+        "model": "text-embedding-3-small",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.embeddingsOpenAi",
+      "typeVersion": 1,
+      "position": [
+        -1368,
+        1480
+      ],
+      "id": "3173455e-9b30-46ce-a3dd-2ae4ac77d91a",
+      "name": "OpenAI Embeddings"
+    },
+    {
+      "parameters": {
+        "mode": "insert",
+        "memoryKey": {
+          "__rl": true,
+          "mode": "list",
+          "value": "vector_store_key"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.vectorStoreInMemory",
+      "typeVersion": 1.3,
+      "position": [
+        -1440,
+        1256
+      ],
+      "id": "5c556902-d927-4db0-8b56-0a3bb5cfa359",
+      "name": "In-Memory Vector Store"
+    },
+    {
+      "parameters": {
+        "topK": 5
+      },
+      "type": "@n8n/n8n-nodes-langchain.retrieverVectorStore",
+      "typeVersion": 1,
+      "position": [
+        -768,
+        352
+      ],
+      "id": "f70299aa-e0fa-438a-b059-6f633b1ba78f",
+      "name": "Vector Retriever (Top 5)"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are a helpful and friendly medical office assistant for Dr. Jennifer's Family Medicine & Wellness Center. Your role is to assist patients and website visitors with their questions about the clinic.\n\n**Your Personality:**\n- Warm, professional, and empathetic\n- Patient and clear in your explanations\n- Helpful and solution-oriented\n- Use the patient's name ({{ $('Parse Chat Message').item.json.userName }}) when appropriate\n\n**Your Capabilities:**\n- Answer questions about office hours, location, and services\n- Provide information about insurance and billing\n- Guide patients on how to schedule appointments\n- Explain clinic policies (cancellations, refills, etc.)\n- Direct patients to appropriate resources (phone numbers, portal, booking links)\n\n**Important Guidelines:**\n1. **Never provide medical advice or diagnoses** - Always direct medical questions to schedule an appointment or call the office\n2. **For emergencies:** Immediately tell them to call 911 or go to the ER\n3. **Use the knowledge base:** Base your answers on the provided clinic information\n4. **Be concise:** Keep responses under 200 words when possible\n5. **Provide actionable next steps:** Include phone numbers, links, or instructions\n6. **Clarify when unsure:** If information isn't in the knowledge base, admit you don't know and suggest calling the office\n7. **Privacy:** Never ask for or store personal health information in chat\n\n**Common Actions to Suggest:**\n- Book appointment: https://cal.com/izzydevbuilds/appointment-with-dr.-jennifer\n- Call office: (555) 123-4567\n- Access patient portal: www.drjenniferclinic.com/portal\n- After-hours nurse: (555) 123-4599\n\n**Context from Knowledge Base:**\n{context}\n\n**Conversation History:**\nThe chat memory contains our previous conversation.\n\n**Current Question:**\n{{ $('Parse Chat Message').item.json.userMessage }}\n\n**Your Response:**\nProvide a helpful, accurate answer based on the knowledge base. If greeting, respond warmly and ask how you can help.",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainRetrievalQa",
+      "typeVersion": 1.5,
+      "position": [
+        -760,
+        128
+      ],
+      "id": "05b26f72-fdab-40cd-9580-e0b09b21c5eb",
+      "name": "RAG QA Chain"
+    },
+    {
+      "parameters": {
+        "jsCode": "/**\n * Format AI response for chatbot display\n * Add helpful quick action buttons\n */\n\nconst chatResponse = $input.first().json;\nconst userMessage = $('Parse Chat Message').item.json.userMessage;\nconst messageLower = userMessage.toLowerCase();\n\n// Extract response text\nlet responseText = chatResponse.output || chatResponse.text || chatResponse.response || \"I apologize, but I couldn't generate a response. Please try again or call our office at (555) 123-4567.\";\n\n// Determine quick action buttons based on context\nconst quickActions = [];\n\n// Appointment-related keywords\nif (messageLower.includes(\"appoint\") || messageLower.includes(\"schedule\") || messageLower.includes(\"book\")) {\n  quickActions.push({\n    label: \"📅 Book Appointment\",\n    url: \"https://cal.com/izzydevbuilds/appointment-with-dr.-jennifer\",\n    type: \"link\"\n  });\n}\n\n// Hours/contact keywords\nif (messageLower.includes(\"hour\") || messageLower.includes(\"open\") || messageLower.includes(\"call\") || messageLower.includes(\"contact\")) {\n  quickActions.push({\n    label: \"📞 Call Office\",\n    action: \"tel:5551234567\",\n    type: \"phone\"\n  });\n}\n\n// Prescription keywords\nif (messageLower.includes(\"prescription\") || messageLower.includes(\"refill\") || messageLower.includes(\"medication\")) {\n  quickActions.push({\n    label: \"💊 Request Refill (Portal)\",\n    url: \"https://www.drjenniferclinic.com/portal\",\n    type: \"link\"\n  });\n}\n\n// Insurance/billing keywords\nif (messageLower.includes(\"insurance\") || messageLower.includes(\"billing\") || messageLower.includes(\"payment\") || messageLower.includes(\"cost\")) {\n  quickActions.push({\n    label: \"💳 Billing Questions\",\n    action: \"tel:5551234567,3\",\n    type: \"phone\"\n  });\n}\n\n// Lab results keywords\nif (messageLower.includes(\"lab\") || messageLower.includes(\"result\") || messageLower.includes(\"test\")) {\n  quickActions.push({\n    label: \"🔬 View Lab Results\",\n    url: \"https://www.drjenniferclinic.com/portal\",\n    type: \"link\"\n  });\n}\n\n// Emergency keywords\nif (messageLower.includes(\"emergency\") || messageLower.includes(\"urgent\") || messageLower.includes(\"after hours\")) {\n  quickActions.push({\n    label: \"🚨 After-Hours Nurse\",\n    action: \"tel:5551234599\",\n    type: \"phone\"\n  });\n}\n\n// Default actions if none matched\nif (quickActions.length === 0) {\n  quickActions.push(\n    {\n      label: \"📅 Book Appointment\",\n      url: \"https://cal.com/izzydevbuilds/appointment-with-dr.-jennifer\",\n      type: \"link\"\n    },\n    {\n      label: \"📞 Call Office\",\n      action: \"tel:5551234567\",\n      type: \"phone\"\n    }\n  );\n}\n\nconsole.log(`\n✅ AI Response Generated:\n  - Length: ${responseText.length} characters\n  - Quick Actions: ${quickActions.length}\n`);\n\nreturn [{\n  json: {\n    response: responseText,\n    quickActions: quickActions.slice(0, 3), // Max 3 buttons\n    timestamp: new Date().toISOString(),\n    sessionId: $('Parse Chat Message').item.json.sessionId,\n    userName: $('Parse Chat Message').item.json.userName\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -400,
+        232
+      ],
+      "id": "9885304e-31a9-4892-95bb-73190d9ce140",
+      "name": "Format Response with Quick Actions"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ {\n  \"success\": true,\n  \"response\": $json.response,\n  \"quickActions\": $json.quickActions,\n  \"sessionId\": $json.sessionId,\n  \"timestamp\": $json.timestamp\n} }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              }
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        -176,
+        136
+      ],
+      "id": "db867d74-3cf0-4091-8807-93164dd19925",
+      "name": "Webhook Response: Success"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ {\n  \"success\": false,\n  \"response\": $json.response || \"I apologize, but I encountered an error. Please call our office at (555) 123-4567 for assistance.\",\n  \"sessionId\": $json.sessionId,\n  \"quickActions\": [\n    {\n      \"label\": \"📞 Call Office\",\n      \"action\": \"tel:5551234567\",\n      \"type\": \"phone\"\n    }\n  ],\n  \"timestamp\": new Date().toISOString()\n} }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              }
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        -696,
+        720
+      ],
+      "id": "a8693547-1af9-490d-a36d-d543a953f640",
+      "name": "Webhook Response: Error"
+    },
+    {
+      "parameters": {
+        "jsCode": "/**\n * Log chat interaction to Google Sheet for analytics\n * Track: timestamp, user message, AI response, session ID\n */\n\nconst userMessage = $('Parse Chat Message').item.json.userMessage;\nconst aiResponse = $input.first().json.response;\nconst sessionId = $input.first().json.sessionId;\nconst userName = $input.first().json.userName;\n\nreturn [{\n  json: {\n    Timestamp: new Date().toISOString(),\n    Session_ID: sessionId,\n    User_Name: userName,\n    User_Message: userMessage,\n    AI_Response: aiResponse.substring(0, 500), // Truncate for sheet\n    Message_Length: userMessage.length,\n    Response_Length: aiResponse.length,\n    Quick_Actions_Count: $input.first().json.quickActions?.length || 0\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -176,
+        328
+      ],
+      "id": "dac3e0ce-b657-4ee1-bdf0-c96dd119779a",
+      "name": "Prepare Log Entry"
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "1qwRj5vMXyrCiuAohIX-gcOmGK1M9Hc1BMLkK0vBE_3Y",
+          "mode": "list",
+          "cachedResultName": "Medical_Workflow"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=2",
+          "mode": "list",
+          "cachedResultName": "Chatbot_Logs"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        48,
+        328
+      ],
+      "id": "9f4ff9d3-25c7-4a64-b1be-174411339fd9",
+      "name": "Log to Google Sheet",
+      "continueOnFail": true
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook: Chat Message": {
+      "main": [
+        [
+          {
+            "node": "Parse Chat Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Chat Message": {
+      "main": [
+        [
+          {
+            "node": "Valid Message?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Valid Message?": {
+      "main": [
+        [
+          {
+            "node": "Webhook Response: Error",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Read Knowledge Base",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "RAG QA Chain",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Knowledge Base": {
+      "main": [
+        [
+          {
+            "node": "Load Knowledge Base Document",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load Knowledge Base Document": {
+      "main": [
+        [
+          {
+            "node": "In-Memory Vector Store",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split into Chunks": {
+      "ai_textSplitter": [
+        [
+          {
+            "node": "Load Knowledge Base Document",
+            "type": "ai_textSplitter",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Embeddings": {
+      "ai_embedding": [
+        [
+          {
+            "node": "In-Memory Vector Store",
+            "type": "ai_embedding",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "In-Memory Vector Store": {
+      "ai_vectorStore": [
+        [
+          {
+            "node": "Vector Retriever (Top 5)",
+            "type": "ai_vectorStore",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Vector Retriever (Top 5)": {
+      "ai_retriever": [
+        [
+          {
+            "node": "RAG QA Chain",
+            "type": "ai_retriever",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model (GPT-4o)": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "RAG QA Chain",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chat Memory (10 messages)": {
+      "ai_memory": [
+        [
+          {
+            "node": "RAG QA Chain",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "RAG QA Chain": {
+      "main": [
+        [
+          {
+            "node": "Format Response with Quick Actions",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Response with Quick Actions": {
+      "main": [
+        [
+          {
+            "node": "Webhook Response: Success",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Prepare Log Entry",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Log Entry": {
+      "main": [
+        [
+          {
+            "node": "Log to Google Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "8ee17d31-720a-4320-b6ca-bf824c422cfd",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "7b3125be3eb2b56ab7606a684daa96104964f42d4c53676367f2a84787aca813"
+  },
+  "id": "OwRKkA5I7ApHwqo7",
+  "tags": []
+}

@@ -1,0 +1,477 @@
+{
+  "name": "Marcus Real Estate - Follow-Up Sequences",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 10 * * *"
+            }
+          ]
+        }
+      },
+      "id": "daily-trigger",
+      "name": "Daily at 10 AM",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [240, 500]
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $env.GOOGLE_SHEETS_ID }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Master Leads",
+          "mode": "name"
+        },
+        "options": {}
+      },
+      "id": "read-all-leads",
+      "name": "Read All Leads",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [460, 500],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "googleSheetsOAuth2",
+          "name": "Google Sheets OAuth2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Calculate which follow-ups are needed based on lead status and last contact\nconst leads = $input.all();\nconst now = new Date();\nconst followUps = [];\n\nfor (const item of leads) {\n  const lead = item.json;\n  const lastContact = new Date(lead['Last Contact']);\n  const daysSinceContact = Math.floor((now - lastContact) / (1000 * 60 * 60 * 24));\n  const status = lead.Status;\n  const leadScore = lead['Lead Score'];\n  \n  // Skip if no email/phone\n  if (!lead.Email && !lead.Phone) continue;\n  \n  // NEW LEAD SEQUENCE (Days 1-7)\n  if (status === 'Qualified' && daysSinceContact >= 2 && daysSinceContact < 3) {\n    followUps.push({\n      json: {\n        ...lead,\n        followUpType: 'new-lead-day2',\n        daysSinceContact,\n        subject: `Found ${lead.Name.split(' ')[0]}! 3 more perfect properties`,\n        message: 'day2-new-properties'\n      }\n    });\n  }\n  else if (status === 'Qualified' && daysSinceContact >= 3 && daysSinceContact < 4) {\n    followUps.push({\n      json: {\n        ...lead,\n        followUpType: 'new-lead-day3',\n        daysSinceContact,\n        subject: `Ready to schedule viewings?`,\n        message: 'day3-viewing-check'\n      }\n    });\n  }\n  else if (status === 'Qualified' && daysSinceContact >= 5 && daysSinceContact < 6) {\n    followUps.push({\n      json: {\n        ...lead,\n        followUpType: 'new-lead-day5',\n        daysSinceContact,\n        subject: `🏠 3 NEW listings in your range!`,\n        message: 'day5-new-listings'\n      }\n    });\n  }\n  else if (status === 'Qualified' && daysSinceContact >= 7 && daysSinceContact < 8) {\n    followUps.push({\n      json: {\n        ...lead,\n        followUpType: 'new-lead-day7',\n        daysSinceContact,\n        subject: `Let's connect this week`,\n        message: 'day7-call-reminder'\n      }\n    });\n  }\n  \n  // VIEWING SCHEDULED/ACTIVE SEQUENCE (Days 1-30)\n  else if ((status === 'Viewing Scheduled' || status === 'Active') && daysSinceContact >= 3 && daysSinceContact < 4) {\n    followUps.push({\n      json: {\n        ...lead,\n        followUpType: 'active-day3',\n        daysSinceContact,\n        subject: `Similar properties you might love`,\n        message: 'active-similar-properties'\n      }\n    });\n  }\n  else if ((status === 'Viewing Scheduled' || status === 'Active') && daysSinceContact >= 7 && daysSinceContact < 8) {\n    followUps.push({\n      json: {\n        ...lead,\n        followUpType: 'active-day7',\n        daysSinceContact,\n        subject: `Questions about the homes you saw?`,\n        message: 'active-questions-check'\n      }\n    });\n  }\n  else if ((status === 'Viewing Scheduled' || status === 'Active') && daysSinceContact >= 14 && daysSinceContact < 15) {\n    followUps.push({\n      json: {\n        ...lead,\n        followUpType: 'active-day14',\n        daysSinceContact,\n        subject: `Market update: 2 new listings in your range`,\n        message: 'active-market-update'\n      }\n    });\n  }\n  else if ((status === 'Viewing Scheduled' || status === 'Active') && daysSinceContact >= 21 && daysSinceContact < 22) {\n    followUps.push({\n      json: {\n        ...lead,\n        followUpType: 'active-day21',\n        daysSinceContact,\n        subject: `Checking in`,\n        message: 'active-call-check'\n      }\n    });\n  }\n  else if ((status === 'Viewing Scheduled' || status === 'Active') && daysSinceContact >= 30 && daysSinceContact < 31) {\n    followUps.push({\n      json: {\n        ...lead,\n        followUpType: 'active-day30',\n        daysSinceContact,\n        subject: `Still looking? 5 new listings in your market`,\n        message: 'active-30day-update'\n      }\n    });\n  }\n  \n  // COLD/STALE SEQUENCE (Every 2 weeks)\n  else if (status === 'Cold' || (daysSinceContact >= 30 && leadScore !== 'HOT')) {\n    // Send every 14 days\n    if (daysSinceContact % 14 === 0 && daysSinceContact >= 30 && daysSinceContact <= 180) {\n      followUps.push({\n        json: {\n          ...lead,\n          followUpType: 'cold-biweekly',\n          daysSinceContact,\n          subject: `Market update for your area`,\n          message: 'cold-market-update'\n        }\n      });\n    }\n  }\n}\n\nreturn followUps.length > 0 ? followUps : [{ json: { noFollowUps: true } }];"
+      },
+      "id": "calculate-followups",
+      "name": "Calculate Follow-Ups Needed",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 500]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {},
+          "conditions": [
+            {
+              "id": "has-followups",
+              "leftValue": "={{ $json.noFollowUps }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "notEquals"
+              }
+            }
+          ],
+          "combineOperation": "any"
+        },
+        "options": {}
+      },
+      "id": "filter-followups",
+      "name": "Has Follow-Ups?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.1,
+      "position": [900, 500]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "route-by-type",
+              "name": "routeDestination",
+              "value": "={{ $json.followUpType.split('-')[0] }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "route-by-stage",
+      "name": "Route by Lead Stage",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1120, 500]
+    },
+    {
+      "parameters": {
+        "mode": "rules",
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.routeDestination }}",
+                    "rightValue": "new",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combineOperation": "any"
+              },
+              "outputKey": "newLeads"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.routeDestination }}",
+                    "rightValue": "active",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combineOperation": "any"
+              },
+              "outputKey": "activeLeads"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.routeDestination }}",
+                    "rightValue": "cold",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combineOperation": "any"
+              },
+              "outputKey": "coldLeads"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "switch-lead-stage",
+      "name": "Switch: Lead Stage",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [1340, 500]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Generate personalized follow-up email for NEW LEADS\nconst lead = $input.first().json;\nconst firstName = lead.Name.split(' ')[0];\nconst followUpType = lead.followUpType;\n\nlet emailBody = '';\nlet smsMessage = '';\n\nswitch (followUpType) {\n  case 'new-lead-day2':\n    emailBody = `\n      <p>Hi ${firstName}! 👋</p>\n      <p>Hope you had a chance to review the properties I sent yesterday. I just found <strong>3 more homes</strong> that match your criteria perfectly:</p>\n      <ul>\n        <li>All within your ${lead.Budget} budget</li>\n        <li>In your preferred area</li>\n        <li>Just listed this week!</li>\n      </ul>\n      <p>Let me know which ones catch your eye and we can schedule viewings! 🏠</p>\n      <p>Best,<br/>Marcus</p>\n    `;\n    smsMessage = `Hey ${firstName}! Found 3 more perfect properties in your range. Check your email! Want to view any this week? - Marcus`;\n    break;\n    \n  case 'new-lead-day3':\n    emailBody = `\n      <p>Hi ${firstName},</p>\n      <p>Have any of the properties I sent sparked your interest? I'd love to show you around!</p>\n      <p><strong>My availability this week:</strong></p>\n      <ul>\n        <li>Tuesday afternoon</li>\n        <li>Thursday afternoon</li>\n        <li>Saturday morning</li>\n      </ul>\n      <p>In this market, the best properties go fast. Let's get you in to see them before someone else does!</p>\n      <p><a href=\"{{ $env.CALENDLY_URL }}\">Click here to schedule viewings</a></p>\n      <p>Talk soon,<br/>Marcus</p>\n    `;\n    smsMessage = `${firstName}, ready to view some properties? I'm free Tues/Thurs afternoons or Sat morning. Book here: {{ $env.CALENDLY_URL }} - Marcus`;\n    break;\n    \n  case 'new-lead-day5':\n    emailBody = `\n      <p>Hi ${firstName}! 🏠</p>\n      <p><strong>HOT OFF THE PRESS!</strong> Three brand new listings just hit the market in your price range:</p>\n      <p>These won't last long. Want to be one of the first to see them?</p>\n      <p><a href=\"{{ $env.CALENDLY_URL }}\">Schedule viewings here</a></p>\n      <p>Marcus</p>\n    `;\n    smsMessage = `🚨 ${firstName}! 3 NEW listings just dropped in your range. Check email + let's view ASAP! - Marcus`;\n    break;\n    \n  case 'new-lead-day7':\n    emailBody = `\n      <p>Hi ${firstName},</p>\n      <p>I haven't heard from you in a week, so I wanted to check in! Are you still looking for a home, or did your timeline change?</p>\n      <p>If you're still in the market, I'd love to <strong>hop on a quick call</strong> this week to discuss:</p>\n      <ul>\n        <li>What you're looking for</li>\n        <li>Any questions you have</li>\n        <li>Current market trends</li>\n        <li>Next steps</li>\n      </ul>\n      <p>Reply to this email or text me at {{ $env.AGENT_PHONE }}. Looking forward to connecting!</p>\n      <p>Best,<br/>Marcus</p>\n    `;\n    smsMessage = `Hey ${firstName}, haven't heard from you in a bit. Still looking for a home? Let's chat this week! - Marcus {{ $env.AGENT_PHONE }}`;\n    break;\n}\n\nreturn [{\n  json: {\n    ...lead,\n    emailBody,\n    smsMessage\n  }\n}];"
+      },
+      "id": "generate-new-lead-content",
+      "name": "Generate: NEW Lead Content",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1560, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Generate personalized follow-up email for ACTIVE LEADS\nconst lead = $input.first().json;\nconst firstName = lead.Name.split(' ')[0];\nconst followUpType = lead.followUpType;\n\nlet emailBody = '';\nlet smsMessage = '';\n\nswitch (followUpType) {\n  case 'active-day3':\n    emailBody = `\n      <p>Hi ${firstName}!</p>\n      <p>I've been thinking about the property you viewed, and I found <strong>3 similar homes</strong> you might love even more:</p>\n      <p>Each one has the features you mentioned you were looking for. Want to see them?</p>\n      <p><a href=\"{{ $env.CALENDLY_URL }}\">Schedule viewings</a></p>\n      <p>Marcus</p>\n    `;\n    smsMessage = `Hey ${firstName}! Found 3 homes similar to the one you viewed but with some upgrades. Interested? - Marcus`;\n    break;\n    \n  case 'active-day7':\n    emailBody = `\n      <p>Hi ${firstName},</p>\n      <p>It's been a week since you viewed properties. I wanted to check in:</p>\n      <ul>\n        <li>Any questions about the homes you saw?</li>\n        <li>Want to schedule a second viewing?</li>\n        <li>Should we adjust our search criteria?</li>\n      </ul>\n      <p>I'm here to help! Just reply or call me at {{ $env.AGENT_PHONE }}.</p>\n      <p>Best,<br/>Marcus</p>\n    `;\n    smsMessage = `${firstName}, checking in on the homes you viewed last week. Any questions or want to see more? - Marcus`;\n    break;\n    \n  case 'active-day14':\n    emailBody = `\n      <p>Hi ${firstName}!</p>\n      <p><strong>Quick market update:</strong> 2 new properties just listed in your price range and area.</p>\n      <p>Both fit your criteria and are priced competitively. In this market, I expect offers within days.</p>\n      <p>Want details? Let me know and I'll send them over!</p>\n      <p>Marcus</p>\n    `;\n    smsMessage = `${firstName}, 2 NEW listings in your area just dropped. Both fit what you're looking for. Want to see them? - Marcus`;\n    break;\n    \n  case 'active-day21':\n    emailBody = `\n      <p>Hi ${firstName},</p>\n      <p>Just checking in! It's been 3 weeks since we last connected. Are you still actively looking, or has your timeline shifted?</p>\n      <p>Either way is fine - I just want to make sure I'm being helpful and not overwhelming you with updates.</p>\n      <p>Let me know where you're at and we can adjust accordingly!</p>\n      <p>Best,<br/>Marcus<br/>{{ $env.AGENT_PHONE }}</p>\n    `;\n    smsMessage = `Hi ${firstName}, it's been 3 weeks. Still looking or did timeline change? Let me know so I can adjust! - Marcus`;\n    break;\n    \n  case 'active-day30':\n    emailBody = `\n      <p>Hi ${firstName},</p>\n      <p>It's been a month since we last spoke. I hope your home search is going well!</p>\n      <p>The market has been active lately, and I've seen <strong>5 new listings</strong> come up in your criteria:</p>\n      <p>If you're still looking, I'd love to help. If not, no worries - just let me know so I don't keep bugging you! 😊</p>\n      <p>Best,<br/>Marcus</p>\n    `;\n    smsMessage = `${firstName}, been a month! 5 new homes in your range if you're still looking. Let me know! - Marcus`;\n    break;\n}\n\nreturn [{\n  json: {\n    ...lead,\n    emailBody,\n    smsMessage\n  }\n}];"
+      },
+      "id": "generate-active-lead-content",
+      "name": "Generate: ACTIVE Lead Content",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1560, 500]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Generate personalized follow-up email for COLD LEADS\nconst lead = $input.first().json;\nconst firstName = lead.Name.split(' ')[0];\n\nconst emailBody = `\n  <p>Hi ${firstName},</p>\n  <p>It's been a while since we last connected! I wanted to share a quick market update for your area:</p>\n  <ul>\n    <li><strong>Average home price:</strong> Still competitive in your range</li>\n    <li><strong>Inventory:</strong> ${Math.floor(Math.random() * 20) + 10} active listings</li>\n    <li><strong>Days on market:</strong> Properties are moving fast</li>\n  </ul>\n  <p>If your timeline has changed and you're ready to start looking again, I'd love to help!</p>\n  <p>If not, no worries - I'll check in again in a couple weeks.</p>\n  <p>Best,<br/>Marcus<br/>{{ $env.AGENT_EMAIL }} | {{ $env.AGENT_PHONE }}</p>\n`;\n\nconst smsMessage = `Hi ${firstName}, quick market update: Still seeing good inventory in your price range. Let me know if you want details! - Marcus`;\n\nreturn [{\n  json: {\n    ...lead,\n    emailBody,\n    smsMessage\n  }\n}];"
+      },
+      "id": "generate-cold-lead-content",
+      "name": "Generate: COLD Lead Content",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1560, 700]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineAll",
+        "options": {}
+      },
+      "id": "merge-all-content",
+      "name": "Merge All Content",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [1780, 500]
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $env.AGENT_EMAIL }}",
+        "toEmail": "={{ $json.Email }}",
+        "subject": "={{ $json.subject }}",
+        "emailType": "html",
+        "message": "=<!DOCTYPE html>\n<html>\n<head>\n  <style>\n    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }\n    .container { max-width: 600px; margin: 0 auto; padding: 20px; }\n    .content { background: #f8fafc; padding: 30px; border: 1px solid #e2e8f0; border-radius: 8px; }\n  </style>\n</head>\n<body>\n  <div class=\"container\">\n    <div class=\"content\">\n      {{ $json.emailBody }}\n    </div>\n  </div>\n</body>\n</html>",
+        "options": {}
+      },
+      "id": "send-followup-email",
+      "name": "Send Follow-Up Email",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [2000, 400],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "gmailOAuth2",
+          "name": "Gmail OAuth2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fromPhoneNumber": "={{ $env.TWILIO_PHONE_NUMBER }}",
+        "toPhoneNumber": "={{ $json.Phone }}",
+        "message": "={{ $json.smsMessage }}",
+        "options": {}
+      },
+      "id": "send-followup-sms",
+      "name": "Send Follow-Up SMS",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 2,
+      "position": [2000, 600],
+      "credentials": {
+        "twilioApi": {
+          "id": "twilioApi",
+          "name": "Twilio API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $env.GOOGLE_SHEETS_ID }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Master Leads",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Last Contact": "={{ $now.toISO() }}",
+            "Notes": "=Follow-up sent: {{ $json.followUpType }} ({{ $json.daysSinceContact }} days since last contact)",
+            "Engagement Score": "={{ ($json['Engagement Score'] || 0) }}"
+          }
+        },
+        "options": {}
+      },
+      "id": "update-tracking-sheet",
+      "name": "Update Lead Tracking",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [2220, 500],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "googleSheetsOAuth2",
+          "name": "Google Sheets OAuth2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "## FOLLOW-UP SEQUENCES\n\nRuns daily at 10 AM to calculate follow-ups based on:\n- Lead status (Qualified, Active, Cold)\n- Days since last contact\n- Lead score\n\nTHREE SEQUENCES:\n\n1. NEW LEADS (Days 1-7)\n   - Day 2: More properties\n   - Day 3: Viewing availability\n   - Day 5: New listings alert\n   - Day 7: Call reminder\n\n2. ACTIVE/VIEWING (Days 1-30)\n   - Day 3: Similar properties\n   - Day 7: Questions check\n   - Day 14: Market update\n   - Day 21: Status check\n   - Day 30: Re-engagement\n\n3. COLD (Every 2 weeks)\n   - Bi-weekly market updates\n   - Low-pressure check-ins\n\nEngagement tracked in sheet.\nReactivates 3-5 deals/year = $9K-15K!",
+        "height": 540,
+        "width": 340,
+        "color": 7
+      },
+      "id": "sticky-note-followups",
+      "name": "Sticky Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [240, 80]
+    }
+  ],
+  "connections": {
+    "Daily at 10 AM": {
+      "main": [
+        [
+          {
+            "node": "Read All Leads",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read All Leads": {
+      "main": [
+        [
+          {
+            "node": "Calculate Follow-Ups Needed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculate Follow-Ups Needed": {
+      "main": [
+        [
+          {
+            "node": "Has Follow-Ups?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Follow-Ups?": {
+      "main": [
+        [
+          {
+            "node": "Route by Lead Stage",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route by Lead Stage": {
+      "main": [
+        [
+          {
+            "node": "Switch: Lead Stage",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch: Lead Stage": {
+      "main": [
+        [
+          {
+            "node": "Generate: NEW Lead Content",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Generate: ACTIVE Lead Content",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Generate: COLD Lead Content",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate: NEW Lead Content": {
+      "main": [
+        [
+          {
+            "node": "Merge All Content",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate: ACTIVE Lead Content": {
+      "main": [
+        [
+          {
+            "node": "Merge All Content",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Generate: COLD Lead Content": {
+      "main": [
+        [
+          {
+            "node": "Merge All Content",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "Merge All Content": {
+      "main": [
+        [
+          {
+            "node": "Send Follow-Up Email",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Send Follow-Up SMS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Follow-Up Email": {
+      "main": [
+        [
+          {
+            "node": "Update Lead Tracking",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Follow-Up SMS": {
+      "main": [
+        [
+          {
+            "node": "Update Lead Tracking",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "createdAt": "2025-01-22T00:00:00.000Z",
+      "updatedAt": "2025-01-22T00:00:00.000Z",
+      "id": "real-estate-automation",
+      "name": "Real Estate Automation"
+    }
+  ],
+  "triggerCount": 1,
+  "updatedAt": "2025-01-22T00:00:00.000Z",
+  "versionId": "1"
+}

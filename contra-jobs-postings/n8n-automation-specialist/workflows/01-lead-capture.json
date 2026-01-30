@@ -1,0 +1,307 @@
+{
+  "name": "01 - Lead Capture & Enrichment",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "lead-capture",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook - Lead Received",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1.1,
+      "position": [250, 300],
+      "webhookId": "lead-capture"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "email-check",
+              "leftValue": "={{ $json.email }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "validate-data",
+      "name": "IF - Valid Email",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [470, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Data normalization and enrichment preparation\nconst input = $input.first().json;\n\nconst normalized = {\n  email: input.email?.toLowerCase().trim(),\n  firstName: input.firstName || input.first_name || '',\n  lastName: input.lastName || input.last_name || '',\n  company: input.company || input.companyName || '',\n  phone: input.phone || input.phoneNumber || '',\n  source: input.source || input.utm_source || 'website',\n  \n  // Extract domain for enrichment\n  emailDomain: input.email?.split('@')[1] || '',\n  \n  // Preserve original data\n  rawData: input,\n  \n  // Add metadata\n  capturedAt: new Date().toISOString(),\n  processingId: $execution.id\n};\n\n// Basic lead quality indicators\nnormalized.qualitySignals = {\n  hasCompanyEmail: !['gmail.com', 'yahoo.com', 'hotmail.com', 'outlook.com'].includes(normalized.emailDomain),\n  hasPhone: !!normalized.phone,\n  hasCompany: !!normalized.company,\n  hasFullName: !!(normalized.firstName && normalized.lastName)\n};\n\nreturn normalized;"
+      },
+      "id": "normalize-data",
+      "name": "Code - Normalize Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [690, 280]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://api:3000/api/leads",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "create-lead-api",
+      "name": "HTTP - Create Lead in API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [910, 280],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://api:3000/api/ai/qualify",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={ \"lead\": {{ JSON.stringify($json.data) }} }",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "ai-qualify",
+      "name": "HTTP - AI Qualification",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1130, 280],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "score-check",
+              "leftValue": "={{ $json.data?.score }}",
+              "rightValue": 70,
+              "operator": {
+                "type": "number",
+                "operation": "gte"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "route-by-score",
+      "name": "IF - High Score Lead",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1350, 280]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "trigger-sales-sequence",
+        "options": {}
+      },
+      "id": "trigger-sales",
+      "name": "HTTP Request - Notify Sales",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1570, 180],
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "trigger-nurture-sequence",
+        "options": {}
+      },
+      "id": "trigger-nurture",
+      "name": "HTTP Request - Add to Nurture",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1570, 380],
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "errorMessage": "Invalid lead data - email is required"
+      },
+      "id": "error-invalid",
+      "name": "Stop - Invalid Data",
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [690, 420]
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "status",
+              "value": "processed"
+            },
+            {
+              "name": "message",
+              "value": "Lead captured and routed successfully"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "success-response",
+      "name": "Set - Success Response",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.3,
+      "position": [1790, 280]
+    }
+  ],
+  "connections": {
+    "Webhook - Lead Received": {
+      "main": [
+        [
+          {
+            "node": "IF - Valid Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Valid Email": {
+      "main": [
+        [
+          {
+            "node": "Code - Normalize Data",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Stop - Invalid Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Normalize Data": {
+      "main": [
+        [
+          {
+            "node": "HTTP - Create Lead in API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP - Create Lead in API": {
+      "main": [
+        [
+          {
+            "node": "HTTP - AI Qualification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP - AI Qualification": {
+      "main": [
+        [
+          {
+            "node": "IF - High Score Lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - High Score Lead": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request - Notify Sales",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "HTTP Request - Add to Nurture",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request - Notify Sales": {
+      "main": [
+        [
+          {
+            "node": "Set - Success Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request - Add to Nurture": {
+      "main": [
+        [
+          {
+            "node": "Set - Success Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": "06-error-monitoring"
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "name": "sales",
+      "id": "1"
+    },
+    {
+      "name": "leads",
+      "id": "2"
+    }
+  ],
+  "triggerCount": 1,
+  "meta": {
+    "instanceId": "autoscale-crm-hub"
+  }
+}

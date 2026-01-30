@@ -1,0 +1,642 @@
+{
+  "name": "Voice Call Escalation - 20hr Unconfirmed",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 30
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [-1440, 400],
+      "id": "schedule-trigger",
+      "name": "Schedule Trigger (Every 30min)"
+    },
+    {
+      "parameters": {
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "value": "1qwRj5vMXyrCiuAohIX-gcOmGK1M9Hc1BMLkK0vBE_3Y",
+          "mode": "list",
+          "cachedResultName": "Medical_Workflow"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [-1200, 400],
+      "id": "read-appointments",
+      "name": "Read Appointments",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "MFvqhvGA0i3KTij0",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "/**\n * Filter for appointments needing 20hr voice call escalation\n * \n * Criteria:\n * - 24hr_Reminder_Sent = TRUE (they got the 24hr reminder)\n * - Status = \"Pending\" (not confirmed yet)\n * - 20hr_Voice_Call_Made = FALSE or null (haven't called yet)\n * - Current time is 20 hours (±30 min) before appointment\n */\n\nconst now = new Date();\nconst appointments = $input.all();\nconst needsCalls = [];\n\nlet totalChecked = 0;\nlet needsCall = 0;\nlet skipped = 0;\n\nfor (const item of appointments) {\n  try {\n    const row = item.json;\n    totalChecked++;\n    \n    // Extract fields\n    const isoTime = row[\"ISO_Time_Format\"];\n    const status = (row[\"Status\"] || \"Pending\").toString();\n    const sent24hr = row[\"24hr_Reminder_Sent\"] === true || row[\"24hr_Reminder_Sent\"] === \"TRUE\";\n    const voiceCallMade = row[\"20hr_Voice_Call_Made\"] === true || row[\"20hr_Voice_Call_Made\"] === \"TRUE\";\n    const patientPhone = row[\"Patient_Phone\"];\n    const patientName = row[\"Patient_Name\"];\n    const patientEmail = row[\"Patient_Email\"];\n    \n    // Validate required fields\n    if (!isoTime || !patientPhone || !patientName) {\n      skipped++;\n      continue;\n    }\n    \n    // Parse appointment time\n    const apptTime = new Date(isoTime);\n    if (isNaN(apptTime.getTime())) {\n      console.error(`❌ Invalid ISO_Time_Format: ${isoTime}`);\n      skipped++;\n      continue;\n    }\n    \n    // Calculate hours until appointment\n    const hoursUntil = (apptTime - now) / 36e5; // milliseconds to hours\n    \n    // Check if appointment needs voice call\n    // Production: 19.5 to 20.5 hours before appointment (30-min window)\n    // Testing: 1.25 to 1.75 minutes before appointment (0.5-min window)\n    const shouldCall = (\n      sent24hr === true &&\n      status === \"Pending\" &&\n      voiceCallMade !== true &&\n      hoursUntil >= 19.5 &&\n      hoursUntil <= 20.5\n    );\n    \n    if (shouldCall) {\n      needsCalls.push({\n        json: {\n          ...row,\n          hoursUntil: Math.round(hoursUntil * 10) / 10,\n          formattedDate: apptTime.toLocaleDateString(\"en-US\", {\n            weekday: \"long\",\n            month: \"long\",\n            day: \"numeric\"\n          }),\n          formattedTime: apptTime.toLocaleTimeString(\"en-US\", {\n            hour: \"numeric\",\n            minute: \"2-digit\",\n            hour12: true\n          }),\n          appointmentDateTime: apptTime.toISOString()\n        }\n      });\n      needsCall++;\n    } else {\n      skipped++;\n    }\n    \n  } catch (error) {\n    console.error(`❌ Error filtering appointment:`, error.message);\n    skipped++;\n  }\n}\n\nconsole.log(`\n📞 Voice Call Escalation Filter:\n  - Total appointments checked: ${totalChecked}\n  - Need voice calls: ${needsCall}\n  - Skipped: ${skipped}\n`);\n\nreturn needsCalls;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-960, 400],
+      "id": "filter-unconfirmed",
+      "name": "Filter for 20hr Unconfirmed"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "leftValue": "={{ $input.all().length }}",
+              "rightValue": "0",
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [-720, 400],
+      "id": "if-needs-calls",
+      "name": "Any Calls Needed?"
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [-480, 300],
+      "id": "loop-patients",
+      "name": "Loop: Each Patient"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.elevenlabs.io/v1/convai/conversation/outbound",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "xi-api-key",
+              "value": "={{ $env.ELEVENLABS_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {\n  \"agent_id\": $env.ELEVENLABS_AGENT_ID,\n  \"phone_number\": $json.Patient_Phone,\n  \"first_message\": \"Hi \" + $json.Patient_Name + \", this is Dr. Jennifer's office calling about your appointment \" + $json.formattedDate + \" at \" + $json.formattedTime + \". We noticed you haven't confirmed yet. Are you still able to make it?\",\n  \"system_prompt\": \"You are a friendly appointment confirmation assistant calling from Dr. Jennifer's medical practice. The patient \" + $json.Patient_Name + \" has an appointment on \" + $json.formattedDate + \" at \" + $json.formattedTime + \".\\n\\nYour goal: Get confirmation of attendance.\\n\\nScenarios:\\n1. CONFIRM: If patient confirms they will attend, respond: 'Perfect! I've marked you as confirmed. We'll see you then. Have a great day!' Then end the call.\\n2. CANCEL: If they want to cancel, respond: 'No problem, I understand. I'm sending you an email with a link to reschedule for a time that works better. You should receive it within 30 seconds.' Then end the call.\\n3. RESCHEDULE: If they want to reschedule, respond: 'Of course! I'm sending you an email with a link to pick a new time. You'll get it in just a moment.' Then end the call.\\n4. VOICEMAIL: If you reach voicemail, leave this message: 'Hi, this is Dr. Jennifer's office calling about your appointment. Please call us back at 555-123-4567 or reply to our email to confirm. Thank you!' Then hang up.\\n5. UNCERTAIN: If they're not sure, respond: 'That's okay. Would you like me to send you a link to reschedule just in case? Or you can call us at 555-123-4567.' Then end the call.\\n\\nBe warm, professional, and brief. End the call after getting a clear answer. Maximum 2-3 exchanges. Use natural conversational language.\",\n  \"metadata\": {\n    \"appointment_uid\": $json.Appointment_Uid,\n    \"patient_name\": $json.Patient_Name,\n    \"appointment_date\": $json.Date,\n    \"appointment_time\": $json.Time\n  }\n} }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-240, 300],
+      "id": "initiate-elevenlabs-call",
+      "name": "Initiate ElevenLabs Call",
+      "notes": "ElevenLabs Conversational AI API call to trigger voice call"
+    },
+    {
+      "parameters": {
+        "jsCode": "/**\n * Extract Call ID and prepare for tracking\n * ElevenLabs returns: { conversation_id: \"conv_abc123\", status: \"initiated\" }\n */\n\nconst elevenlabsResponse = $input.first().json;\nconst appointmentData = $('Loop: Each Patient').first().json;\n\nreturn [{\n  json: {\n    // ElevenLabs call data\n    callId: elevenlabsResponse.conversation_id || elevenlabsResponse.id,\n    callStatus: elevenlabsResponse.status || \"initiated\",\n    \n    // Appointment data for later update\n    Appointment_Uid: appointmentData.Appointment_Uid,\n    Patient_Name: appointmentData.Patient_Name,\n    Patient_Phone: appointmentData.Patient_Phone,\n    Patient_Email: appointmentData.Patient_Email,\n    Date: appointmentData.Date,\n    Time: appointmentData.Time,\n    formattedDate: appointmentData.formattedDate,\n    formattedTime: appointmentData.formattedTime,\n    \n    // Timestamp\n    callInitiatedAt: new Date().toISOString()\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [0, 300],
+      "id": "extract-call-id",
+      "name": "Extract Call ID"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "1qwRj5vMXyrCiuAohIX-gcOmGK1M9Hc1BMLkK0vBE_3Y",
+          "mode": "list",
+          "cachedResultName": "Medical_Workflow"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "20hr_Voice_Call_Made": "=TRUE"
+          },
+          "matchingColumns": [
+            "Appointment_Uid"
+          ],
+          "schema": []
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [240, 300],
+      "id": "mark-call-initiated",
+      "name": "Mark Call Initiated",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "MFvqhvGA0i3KTij0",
+          "name": "Google Sheets account"
+        }
+      },
+      "notes": "Prevent duplicate calls"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [-480, 500],
+      "id": "no-calls-needed",
+      "name": "No Calls Needed - End"
+    },
+    {
+      "parameters": {
+        "path": "elevenlabs-call-complete",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [600, 400],
+      "id": "webhook-elevenlabs-results",
+      "name": "Webhook: ElevenLabs Call Results",
+      "webhookId": "elevenlabs-call-complete"
+    },
+    {
+      "parameters": {
+        "jsCode": "/**\n * Parse ElevenLabs webhook callback\n * \n * ElevenLabs sends:\n * {\n *   \"conversation_id\": \"conv_abc123\",\n *   \"status\": \"ended\",\n *   \"phone_number\": \"+15551234567\",\n *   \"end_reason\": \"user_ended\",\n *   \"transcript\": [\n *     {\"role\": \"agent\", \"message\": \"Hi John...\"},\n *     {\"role\": \"user\", \"message\": \"Yes, I'll be there\"}\n *   ],\n *   \"analysis\": {\n *     \"summary\": \"Patient confirmed attendance\",\n *     \"sentiment\": \"positive\"\n *   },\n *   \"recording_url\": \"https://elevenlabs.io/recording/abc123\"\n * }\n */\n\nconst webhookData = $input.first().json;\n\n// Extract transcript from ElevenLabs format\nlet transcript = \"\";\nif (Array.isArray(webhookData.transcript)) {\n  transcript = webhookData.transcript\n    .map(msg => `${msg.role}: ${msg.message}`)\n    .join('\\n');\n} else if (typeof webhookData.transcript === 'string') {\n  transcript = webhookData.transcript;\n} else {\n  transcript = \"No transcript available\";\n}\n\nconst summary = webhookData.analysis?.summary || webhookData.summary || \"\";\nconst status = webhookData.status || \"unknown\";\nconst endReason = webhookData.end_reason || webhookData.endReason || \"\";\n\n// Determine action taken based on transcript analysis\nlet actionTaken = \"Unknown\";\nlet patientConfirmed = false;\n\nconst transcriptLower = transcript.toLowerCase();\nconst summaryLower = summary.toLowerCase();\n\n// Check for confirmation\nif (transcriptLower.includes(\"confirmed\") || transcriptLower.includes(\"see you\") || \n    transcriptLower.includes(\"i'll be there\") || transcriptLower.includes(\"yes\") ||\n    transcriptLower.includes(\"i will be there\") || summaryLower.includes(\"confirmed\")) {\n  actionTaken = \"Confirmed\";\n  patientConfirmed = true;\n}\n// Check for cancellation/reschedule\nelse if (transcriptLower.includes(\"cancel\") || transcriptLower.includes(\"reschedule\") ||\n         transcriptLower.includes(\"can't make it\") || transcriptLower.includes(\"cannot make it\") ||\n         transcriptLower.includes(\"sending you\") || summaryLower.includes(\"cancel\") || \n         summaryLower.includes(\"reschedule\")) {\n  actionTaken = \"Sent Cal.com Link\";\n  patientConfirmed = false;\n}\n// Check for voicemail\nelse if (transcriptLower.includes(\"voicemail\") || transcriptLower.includes(\"call us back\") ||\n         endReason === \"voicemail\" || summaryLower.includes(\"voicemail\")) {\n  actionTaken = \"Voicemail Left\";\n  patientConfirmed = false;\n}\n// No answer\nelse if (status === \"no-answer\" || endReason === \"no_answer\" || endReason === \"no-answer\" ||\n         summaryLower.includes(\"no answer\")) {\n  actionTaken = \"No Answer\";\n  patientConfirmed = false;\n}\n// Call completed but unclear outcome\nelse if (status === \"ended\" || status === \"completed\") {\n  actionTaken = \"Call Completed - Unclear Response\";\n  patientConfirmed = false;\n}\n\nconsole.log(`\n📞 Call Analysis (ElevenLabs):\n  - Conversation ID: ${webhookData.conversation_id}\n  - Status: ${status}\n  - Action Taken: ${actionTaken}\n  - Confirmed: ${patientConfirmed}\n  - Transcript: ${transcript.substring(0, 200)}...\n`);\n\nreturn [{\n  json: {\n    callId: webhookData.conversation_id || webhookData.id,\n    phoneNumber: webhookData.phone_number || webhookData.phoneNumber,\n    callStatus: status,\n    endedReason: endReason,\n    actionTaken: actionTaken,\n    patientConfirmed: patientConfirmed,\n    transcript: transcript,\n    summary: summary,\n    recordingUrl: webhookData.recording_url || webhookData.recordingUrl || \"\",\n    processedAt: new Date().toISOString()\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [840, 400],
+      "id": "parse-call-results",
+      "name": "Parse Call Results"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.actionTaken }}",
+                    "rightValue": "Confirmed",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "confirmed"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.actionTaken }}",
+                    "rightValue": "Sent Cal.com Link",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "cancel_reschedule"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [1080, 400],
+      "id": "switch-action",
+      "name": "Route by Action"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "1qwRj5vMXyrCiuAohIX-gcOmGK1M9Hc1BMLkK0vBE_3Y",
+          "mode": "list",
+          "cachedResultName": "Medical_Workflow"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Status": "=Confirmed",
+            "Voice_Call_Agent_Action_Taken": "={{ $json.actionTaken }}",
+            "Voice_Call_Agent_Call_Summary": "={{ $json.summary || $json.transcript.substring(0, 500) }}",
+            "Confirmed_At": "={{ $json.processedAt }}"
+          },
+          "matchingColumns": [
+            "Patient_Phone"
+          ],
+          "schema": []
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [1320, 240],
+      "id": "update-confirmed",
+      "name": "Update: Confirmed",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "MFvqhvGA0i3KTij0",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "C08169NMA11",
+          "mode": "list"
+        },
+        "text": "=✅ *Patient Confirmed via Voice Call*\n\n👤 *Patient*: {{ $('Parse Call Results').first().json.phoneNumber }}\n📞 *Action*: {{ $json.actionTaken }}\n📝 *Summary*: {{ $json.summary || \"Confirmed attendance\" }}\n⏰ *Call Time*: {{ $json.processedAt }}\n\nAppointment status updated to Confirmed in Google Sheet.",
+        "otherOptions": {}
+      },
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.2,
+      "position": [1560, 240],
+      "id": "notify-confirmed",
+      "name": "Notify Staff: Confirmed"
+    },
+    {
+      "parameters": {
+        "jsCode": "/**\n * Find appointment UID from Google Sheet based on phone number\n * (Needed because Vapi webhook doesn't include appointment UID)\n */\n\nconst phoneNumber = $input.first().json.phoneNumber;\n\n// Read all appointments to find matching phone\nconst allAppointments = await $node[\"Read Appointments\"].json();\nconst matchedAppt = allAppointments.find(appt => appt.Patient_Phone === phoneNumber);\n\nif (!matchedAppt) {\n  console.warn(`⚠️ No appointment found for phone: ${phoneNumber}`);\n  return [{\n    json: {\n      ...$input.first().json,\n      Appointment_Uid: \"UNKNOWN\",\n      Patient_Email: \"unknown@example.com\"\n    }\n  }];\n}\n\nreturn [{\n  json: {\n    ...$input.first().json,\n    Appointment_Uid: matchedAppt.Appointment_Uid,\n    Patient_Email: matchedAppt.Patient_Email,\n    Patient_Name: matchedAppt.Patient_Name,\n    Date: matchedAppt.Date,\n    Time: matchedAppt.Time\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1320, 400],
+      "id": "lookup-appointment",
+      "name": "Lookup Appointment"
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.Patient_Email }}",
+        "subject": "=Reschedule Your Appointment - Cal.com Link",
+        "emailType": "text",
+        "message": "=Hi {{ $json.Patient_Name }},\n\nThank you for speaking with us! As discussed, here's your link to reschedule your appointment:\n\n🔗 https://cal.com/izzydevbuilds/appointment-with-dr.-jennifer\n\nThis link will allow you to:\n✅ Cancel your current appointment ({{ $json.Date }} at {{ $json.Time }})\n✅ Pick a new date and time that works better for you\n\nIf you have any questions, please call us at (555) 123-4567.\n\nBest regards,\nDr. Jennifer's Office",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [1560, 400],
+      "id": "send-calcom-link",
+      "name": "Send Cal.com Link"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "1qwRj5vMXyrCiuAohIX-gcOmGK1M9Hc1BMLkK0vBE_3Y",
+          "mode": "list",
+          "cachedResultName": "Medical_Workflow"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Voice_Call_Agent_Action_Taken": "={{ $json.actionTaken }}",
+            "Voice_Call_Agent_Call_Summary": "={{ $json.summary || $json.transcript.substring(0, 500) }}"
+          },
+          "matchingColumns": [
+            "Patient_Phone"
+          ],
+          "schema": []
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [1800, 400],
+      "id": "update-calcom-sent",
+      "name": "Update: Link Sent",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "MFvqhvGA0i3KTij0",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "1qwRj5vMXyrCiuAohIX-gcOmGK1M9Hc1BMLkK0vBE_3Y",
+          "mode": "list",
+          "cachedResultName": "Medical_Workflow"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Voice_Call_Agent_Action_Taken": "={{ $json.actionTaken }}",
+            "Voice_Call_Agent_Call_Summary": "={{ $json.summary || $json.transcript.substring(0, 500) }}"
+          },
+          "matchingColumns": [
+            "Patient_Phone"
+          ],
+          "schema": []
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [1320, 560],
+      "id": "update-other",
+      "name": "Update: Other Result",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "MFvqhvGA0i3KTij0",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "=Voice call result processed: {{ $json.actionTaken }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [2040, 400],
+      "id": "webhook-response",
+      "name": "Webhook Response"
+    }
+  ],
+  "connections": {
+    "Schedule Trigger (Every 30min)": {
+      "main": [
+        [
+          {
+            "node": "Read Appointments",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Appointments": {
+      "main": [
+        [
+          {
+            "node": "Filter for 20hr Unconfirmed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter for 20hr Unconfirmed": {
+      "main": [
+        [
+          {
+            "node": "Any Calls Needed?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Any Calls Needed?": {
+      "main": [
+        [
+          {
+            "node": "Loop: Each Patient",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No Calls Needed - End",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop: Each Patient": {
+      "main": [
+        [
+          {
+            "node": "Initiate ElevenLabs Call",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Initiate ElevenLabs Call": {
+      "main": [
+        [
+          {
+            "node": "Extract Call ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Call ID": {
+      "main": [
+        [
+          {
+            "node": "Mark Call Initiated",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook: ElevenLabs Call Results": {
+      "main": [
+        [
+          {
+            "node": "Parse Call Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Call Results": {
+      "main": [
+        [
+          {
+            "node": "Route by Action",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route by Action": {
+      "main": [
+        [
+          {
+            "node": "Update: Confirmed",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Lookup Appointment",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Update: Other Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update: Confirmed": {
+      "main": [
+        [
+          {
+            "node": "Notify Staff: Confirmed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notify Staff: Confirmed": {
+      "main": [
+        [
+          {
+            "node": "Webhook Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lookup Appointment": {
+      "main": [
+        [
+          {
+            "node": "Send Cal.com Link",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Cal.com Link": {
+      "main": [
+        [
+          {
+            "node": "Update: Link Sent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update: Link Sent": {
+      "main": [
+        [
+          {
+            "node": "Webhook Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update: Other Result": {
+      "main": [
+        [
+          {
+            "node": "Webhook Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 2,
+  "updatedAt": "2025-10-31T00:00:00.000Z",
+  "versionId": "1"
+}

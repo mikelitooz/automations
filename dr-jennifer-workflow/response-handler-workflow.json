@@ -1,0 +1,1016 @@
+{
+  "nodes": [
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "simple": false,
+        "filters": {},
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmailTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -1344,
+        -336
+      ],
+      "id": "91a6b6a0-4128-461e-ac8f-9c1f2c333e3e",
+      "name": "Gmail Trigger",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "64z35ERC2QSGzngJ",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.subject }}",
+              "rightValue": "Re:",
+              "operator": {
+                "type": "string",
+                "operation": "startsWith"
+              },
+              "id": "89ad166b-ba87-4d12-a9b9-8107a8c39e19"
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.2,
+      "position": [
+        -1120,
+        -336
+      ],
+      "id": "0762d52f-e812-4f0f-aca4-6209151e8c64",
+      "name": "Filter Reply Emails"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1qwRj5vMXyrCiuAohIX-gcOmGK1M9Hc1BMLkK0vBE_3Y",
+          "mode": "list",
+          "cachedResultName": "Medical_Workflow"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "appointment",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1qwRj5vMXyrCiuAohIX-gcOmGK1M9Hc1BMLkK0vBE_3Y/edit#gid=0"
+        },
+        "filters": {
+          "conditions": [
+            {
+              "column": "Patient_Email",
+              "condition": "equal",
+              "value": "={{ $json.from }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        -896,
+        -336
+      ],
+      "id": "563db235-ce09-42f0-8acc-8d5ced11ed2b",
+      "name": "Lookup Patient",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "cN7VVccmwTr9blH1",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "/**\n * STEP 1: Pattern Matching for Explicit 1/2/3 Responses\n * Fast, free, handles 90% of cases\n * \n * FIX: Properly merge Gmail data with Google Sheets lookup data\n * Ensures only the patient who replied gets their appointment updated\n */\n\nconst results = [];\n\nfor (const item of $input.all()) {\n  try {\n    const data = item.json;\n    \n    // Extract email body from Gmail fields\n    const emailBody = (\n      data.textPlain || \n      data.body || \n      data.snippet || \n      \"\"\n    ).toLowerCase().trim();\n    \n    const fromEmail = data.from;\n    \n    // Validate we have patient data from Google Sheets lookup\n    // The 'Lookup Patient' node should have filtered by email and returned only this patient's data\n    if (!data.Patient_Name || !data.Patient_Email) {\n      console.warn(`⚠️ Patient not found for email: ${fromEmail}`);\n      results.push({\n        json: {\n          from: fromEmail,\n          emailBody: emailBody,\n          responseType: \"patient_not_found\",\n          classificationMethod: \"error\",\n          aiUsed: false,\n          errorMessage: \"Patient email not found in appointments\"\n        }\n      });\n      continue;\n    }\n    \n    // Additional validation: ensure the patient email from sheet matches the email sender\n    if (data.Patient_Email && fromEmail && !fromEmail.toLowerCase().includes(data.Patient_Email.toLowerCase())) {\n      console.warn(`⚠️ Email mismatch: Sender ${fromEmail} does not match patient ${data.Patient_Email}`);\n      results.push({\n        json: {\n          from: fromEmail,\n          emailBody: emailBody,\n          Patient_Email: data.Patient_Email,\n          responseType: \"patient_not_found\",\n          classificationMethod: \"error\",\n          aiUsed: false,\n          errorMessage: \"Email sender does not match appointment patient\"\n        }\n      });\n      continue;\n    }\n    \n    // Check if appointment is in the past\n    const apptDate = new Date(data.Date + \" \" + data.Time);\n    if (apptDate < new Date()) {\n      console.log(`⏰ Appointment already passed for ${data.Patient_Name}`);\n      results.push({\n        json: {\n          ...data,\n          responseType: \"past_appointment\",\n          classificationMethod: \"date_check\",\n          aiUsed: false,\n          emailBody: emailBody,\n          fromEmail: fromEmail\n        }\n      });\n      continue;\n    }\n    \n    let responseType = null;\n    \n    // ===== PRIMARY: Check for explicit \"1\", \"2\", or \"3\" =====\n    if (/\\b1\\b/.test(emailBody)) {\n      responseType = \"confirm\";\n      console.log(`✅ Pattern matched: \"1\" for ${data.Patient_Name}`);\n    } else if (/\\b2\\b/.test(emailBody)) {\n      responseType = \"cancel\";\n      console.log(`❌ Pattern matched: \"2\" for ${data.Patient_Name}`);\n    } else if (/\\b3\\b/.test(emailBody)) {\n      responseType = \"reschedule\";\n      console.log(`🔄 Pattern matched: \"3\" for ${data.Patient_Name}`);\n    }\n    \n    // If found, return immediately (skip AI)\n    if (responseType) {\n      results.push({\n        json: {\n          ...data,\n          responseType,\n          classificationMethod: \"pattern_matching\",\n          aiUsed: false,\n          emailBody: emailBody,\n          fromEmail: fromEmail,\n          processedAt: new Date().toISOString()\n        }\n      });\n    } else {\n      // No pattern found - needs AI classification\n      console.log(`🤖 No pattern found, needs AI for: ${data.Patient_Name}`);\n      results.push({\n        json: {\n          ...data,\n          responseType: \"needs_ai_classification\",\n          classificationMethod: \"pending_ai\",\n          aiUsed: true,\n          emailBody: emailBody,\n          fromEmail: fromEmail,\n          processedAt: new Date().toISOString()\n        }\n      });\n    }\n    \n  } catch (error) {\n    console.error(`❌ Error processing email:`, error.message);\n    results.push({\n      json: {\n        ...item.json,\n        responseType: \"error\",\n        classificationMethod: \"error\",\n        errorMessage: error.message\n      }\n    });\n  }\n}\n\nconsole.log(`\n📊 Pattern Matching Summary:\n  - Processed: ${results.length} emails\n  - Pattern matched: ${results.filter(r => !r.json.aiUsed).length}\n  - Needs AI: ${results.filter(r => r.json.aiUsed).length}\n`);\n\nreturn results;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -672,
+        -336
+      ],
+      "id": "3c733e33-ae48-4b4d-90b3-2a8758f5d288",
+      "name": "Pattern Matching (1/2/3)"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.responseType }}",
+              "rightValue": "needs_ai_classification",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              },
+              "id": "129804a0-22b3-4d0d-a097-3a1f78bd4b78"
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -448,
+        -336
+      ],
+      "id": "077d2e10-0e02-4670-a216-1c743fbc94e8",
+      "name": "Needs AI Classification?"
+    },
+    {
+      "parameters": {
+        "jsCode": "/**\n * Parse AI Response from Claude API\n * Extract classification: CONFIRM, CANCEL, RESCHEDULE, or UNKNOWN\n */\n\nconst results = [];\n\nfor (const item of $input.all()) {\n  try {\n    const data = item.json;\n    \n    // Extract AI response text\n    const aiResponseText = data.content && data.content[0] && data.content[0].text \n      ? data.content[0].text.toUpperCase().trim() \n      : \"UNKNOWN\";\n    \n    console.log(`🤖 AI Response: \"${aiResponseText}\"`);\n    \n    let responseType = \"unknown\";\n    \n    // Parse AI response\n    if (aiResponseText.includes(\"CONFIRM\")) {\n      responseType = \"confirm\";\n    } else if (aiResponseText.includes(\"CANCEL\")) {\n      responseType = \"cancel\";\n    } else if (aiResponseText.includes(\"RESCHEDULE\")) {\n      responseType = \"reschedule\";\n    } else {\n      responseType = \"unknown\";\n    }\n    \n    console.log(`✅ AI classified as: ${responseType}`);\n    \n    results.push({\n      json: {\n        ...data,\n        responseType,\n        classificationMethod: \"ai_claude_haiku\",\n        aiResponse: aiResponseText,\n        processedAt: new Date().toISOString()\n      }\n    });\n    \n  } catch (error) {\n    console.error(`❌ Error parsing AI response:`, error.message);\n    results.push({\n      json: {\n        ...item.json,\n        responseType: \"unknown\",\n        classificationMethod: \"ai_error\",\n        errorMessage: error.message\n      }\n    });\n  }\n}\n\nreturn results;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        16,
+        -416
+      ],
+      "id": "fd73b250-2ffc-4240-9f1b-b33c987d5898",
+      "name": "Parse AI Response"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.responseType }}",
+                    "rightValue": "confirm",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "confirm"
+            },
+            {
+              "conditions": {
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.responseType }}",
+                    "rightValue": "cancel",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "cancel"
+            },
+            {
+              "conditions": {
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.responseType }}",
+                    "rightValue": "reschedule",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "reschedule"
+            },
+            {
+              "conditions": {
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.responseType }}",
+                    "rightValue": "unknown",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "unknown"
+            },
+            {
+              "conditions": {
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.responseType }}",
+                    "rightValue": "patient_not_found",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "error"
+            },
+            {
+              "conditions": {
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.responseType }}",
+                    "rightValue": "past_appointment",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "past"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.1,
+      "position": [
+        240,
+        -400
+      ],
+      "id": "f3c8ae11-0e82-4fa3-bf5e-31b322ff8a41",
+      "name": "Route by Response"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "1qwRj5vMXyrCiuAohIX-gcOmGK1M9Hc1BMLkK0vBE_3Y",
+          "mode": "list",
+          "cachedResultName": "Medical_Workflow"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "appointment",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1qwRj5vMXyrCiuAohIX-gcOmGK1M9Hc1BMLkK0vBE_3Y/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Status": "Confirmed",
+            "Confirmed_At": "={{ $now }}",
+            "Confirmed_Via": "Email",
+            "row_number": 0,
+            "Appointment_Uid": "={{ $json.Appointment_Uid }}"
+          },
+          "matchingColumns": [
+            "Appointment_Uid"
+          ],
+          "schema": [
+            {
+              "id": "Appointment_Uid",
+              "displayName": "Appointment_Uid",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Date",
+              "displayName": "Date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Time",
+              "displayName": "Time",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Patient_Name",
+              "displayName": "Patient_Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Patient_Phone",
+              "displayName": "Patient_Phone",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Patient_Email",
+              "displayName": "Patient_Email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Doctor_Name",
+              "displayName": "Doctor_Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Appointment_Type",
+              "displayName": "Appointment_Type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Status",
+              "displayName": "Status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "48hr_Reminder_Sent",
+              "displayName": "48hr_Reminder_Sent",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "24hr_Reminder_Sent",
+              "displayName": "24hr_Reminder_Sent",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "2hr_Reminder_Sent",
+              "displayName": "2hr_Reminder_Sent",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Confirmed_At",
+              "displayName": "Confirmed_At",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Confirmed_Via",
+              "displayName": "Confirmed_Via",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Cancelled_At",
+              "displayName": "Cancelled_At",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Cancelled_Via",
+              "displayName": "Cancelled_Via",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Cancellation_Reason",
+              "displayName": "Cancellation_Reason",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Rescheduled_At",
+              "displayName": "Rescheduled_At",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Rescheduled_Via",
+              "displayName": "Rescheduled_Via",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Staff_Alerted",
+              "displayName": "Staff_Alerted",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "ISO_Time_Format",
+              "displayName": "ISO_Time_Format",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "20hr_Voice_Call_Made",
+              "displayName": "20hr_Voice_Call_Made",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Voice_Call_Agent_Call_Summary",
+              "displayName": "Voice_Call_Agent_Call_Summary",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Voice_Call_Agent_Action_Taken",
+              "displayName": "Voice_Call_Agent_Action_Taken",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "row_number",
+              "displayName": "row_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "readOnly": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        464,
+        -816
+      ],
+      "id": "2a8bd1e3-f4d4-4122-bf07-d83477bf5b42",
+      "name": "Update Status: Confirmed",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "cN7VVccmwTr9blH1",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json['Patient_Email'] }}",
+        "subject": "=✅ Appointment Confirmed",
+        "emailType": "text",
+        "message": "=Hi {{ $json[\"Patient_Name\"] }},\n\nThank you for confirming your appointment!\n\n📅 {{ $json.Date }}\n⏰ {{ $json.Time }}\n👨‍⚕️ With {{ $json[\"Doctor_Name\"] }}\n📋 {{ $json[\"Appointment_Type\"] }}\n\nWe'll send you another reminder 24 hours before your appointment.\n\nSee you then!\nDr. Jennifer's Clinic",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        656,
+        -816
+      ],
+      "id": "9bcc1b48-5ad3-4dd1-bd89-a6c8214cc9de",
+      "name": "Send Confirmation Email",
+      "webhookId": "41ea2beb-c3aa-4822-8c94-1fdc37db9c7b",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "64z35ERC2QSGzngJ",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json['Patient_Email'] }}",
+        "subject": "=Reschedule Your Appointment - Click Link",
+        "emailType": "text",
+        "message": "=Hi {{ $json[\"Patient_Name\"] }},\n\nWe received your request to RESCHEDULE your appointment:\n\n📅 {{ $json.Date }}\n⏰ {{ $json.Time }}\n👨‍⚕️ {{ $json[\"Doctor_Name\"] }}\n📋 {{ $json[\"Appointment_Type\"] }}\n\nTo choose a new time, please click this link:\n🔗 https://cal.com/booking/{{ $json.Appointment_Uid }}\n\nExact Reschedule URL:\nhttps://cal.com/izzydevbuilds/appointment-with-dr.-jennifer?rescheduleUid={{ $json.Appointment_Uid }}\n\nPlease follow the link to select a more suitable time for you!\n\nNeed help? Call us at [CLINIC_PHONE]\n\nDr. Jennifer's Clinic",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        464,
+        -432
+      ],
+      "id": "6e561d03-d033-4758-bb37-2005293226e0",
+      "name": "Patient: Send Reschedule Link",
+      "webhookId": "2f595886-94f8-4f87-a7c7-14c9b922369b",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "64z35ERC2QSGzngJ",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "=apolloalpha57@gmail.com",
+        "subject": "=📧 Reschedule Link Requested - {{ $json[\"Patient_Name\"] }}",
+        "emailType": "text",
+        "message": "=RESCHEDULE LINK REQUESTED:\n\nPatient: {{ $json[\"Patient_Name\"] }}\nEmail: {{ $json[\"Patient Email\"] }}\nPhone: {{ $json[\"Patient Phone\"] }}\nCurrent Date/Time: {{ $json.Date }} at {{ $json.Time }}\nDoctor: {{ $json[\"Doctor_Name\"] }}\nRequested: {{ $now }} (via email reply)\n\n✅ Reschedule link sent to patient\n⏳ Waiting for patient to complete reschedule on Cal.com\n\nYou will receive another notification when patient completes the reschedule.",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        656,
+        -432
+      ],
+      "id": "3c329ee3-53df-485f-8885-925a864d1de6",
+      "name": "Staff: Reschedule Link Sent Alert",
+      "webhookId": "13bdbf7a-018c-4264-9a10-a941f4ed84f7",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "64z35ERC2QSGzngJ",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json['Patient_Email'] || $json.fromEmail }}",
+        "subject": "=Please Clarify Your Response",
+        "emailType": "text",
+        "message": "=Hi {{ $json[\"Patient_Name\"] || \"there\" }},\n\nWe received your email regarding your appointment on {{ $json.Date }} at {{ $json.Time }}, but we couldn't understand your response.\n\nPlease reply to this email with:\n1 = Confirm appointment\n2 = Cancel appointment\n3 = Reschedule appointment\n\nOr call us for assistance.\n\nBest regards,\nDr. Jennifer's Clinic",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        464,
+        -240
+      ],
+      "id": "ebbd1273-3ffb-475a-9432-149c885dfbe5",
+      "name": "Send Clarification Email",
+      "webhookId": "6cc684b8-94ea-4987-831d-6ca0655be134",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "64z35ERC2QSGzngJ",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json['Patient_Email'] }}",
+        "subject": "=Appointment Already Occurred",
+        "emailType": "text",
+        "message": "=Hi {{ $json[\"Patient_Name\"] }},\n\nWe received your response regarding the appointment on {{ $json.Date }} at {{ $json.Time }}.\n\nThis appointment has already occurred. If you need to schedule a new appointment, please visit:\n🔗 https://cal.com/izzydevbuilds/appointment-with-dr.-jennifer\n\nOr contact us for assistance.\n\nBest regards,\nDr. Jennifer's Clinic",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        464,
+        160
+      ],
+      "id": "c34fafb6-d39a-43aa-b768-0b128e06230c",
+      "name": "Past Appointment Email",
+      "webhookId": "9cbc204c-1d32-4ee3-9fd6-09d12aeb9eaf",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "64z35ERC2QSGzngJ",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "classify",
+        "input": "={{ [{\"role\": \"user\", \"content\": \"You are a medical office assistant. A patient received an appointment reminder email asking them to:\\n- Reply '1' to CONFIRM\\n- Reply '2' to CANCEL\\n- Reply '3' to RESCHEDULE\\n\\nThe patient replied with the following message. Classify their intent as ONE of:\\n- CONFIRM (they want to keep the appointment)\\n- CANCEL (they want to cancel)\\n- RESCHEDULE (they want to change the time/date)\\n- UNKNOWN (unclear intent or asking questions)\\n\\nPatient's email:\\n\\\"\\\"\\\"\\n\" + $json.emailBody + \"\\n\\\"\\\"\\\"\\n\\nRespond with ONLY ONE WORD in all caps: CONFIRM, CANCEL, RESCHEDULE, or UNKNOWN.\"}] }}",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2,
+      "position": [
+        -224,
+        -464
+      ],
+      "id": "b39e5bc3-dcea-41e3-bf67-c59093201ba5",
+      "name": "Classify text for violations",
+      "credentials": {
+        "openAiApi": {
+          "id": "aN7t5BI70hdLqyCz",
+          "name": "n8n free OpenAI API credits"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "=apolloalpha57@gmail.com",
+        "subject": "=Appointment Details for {{ $json['Patient_Email'] || $json.fromEmail }} not found!",
+        "emailType": "text",
+        "message": "=Hi,\n\nWe couldn't find this appointment in our system.\n\nAuto Workflow",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        464,
+        -48
+      ],
+      "id": "877afbf2-8dbd-4516-8bd5-04b595d7e256",
+      "name": "Staff: Patient Not Found Email",
+      "webhookId": "6b17dc78-bc76-43e8-a7c4-3f7a7dea995e",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "64z35ERC2QSGzngJ",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "=apolloalpha57@gmail.com",
+        "subject": "=📧 Cancellation Link Requested - {{ $json[\"Patient_Name\"] }}",
+        "emailType": "text",
+        "message": "=CANCELLATION REQUESTED:\n\nPatient: {{ $json[\"Patient_Name\"] }}\nEmail: {{ $json[\"Patient Email\"] }}\nPhone: {{ $json[\"Patient Phone\"] }}\nDate: {{ $json.Date }}\nTime: {{ $json.Time }}\nDoctor: {{ $json[\"Doctor_Name\"] }}\nType: {{ $json[\"Appointment_Type\"] }}\nRequested: {{ $now }} (via email reply)\n\nThis appointment has been cancelled per patient request.",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        848,
+        -624
+      ],
+      "id": "cd10770a-514e-4fe6-a3f7-bdf98ada0b7c",
+      "name": "Staff: Appointment Cancelled",
+      "webhookId": "f030740e-18d6-4dbe-a940-a38ce63b983b",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "64z35ERC2QSGzngJ",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.cal.com/v2/bookings/{{ $json.Appointment_Uid }}/cancel",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "cal_live_07463df81923cd260074d993dab24c04"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "cal-api-version",
+              "value": "2024-08-13"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "cancellationReason",
+              "value": "Failed to Confirm Appointment"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        464,
+        -624
+      ],
+      "id": "135e9dcc-cdb4-4b0a-ac4b-ec29a6fd90c3",
+      "name": "HTTP Request: Automatically cancel appointment"
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json['Patient_Email'] }}",
+        "subject": "=Your Appointment Has been successfully canceled",
+        "emailType": "text",
+        "message": "=Hi {{ $json[\"Patient_Name\"] }},\n\nWe received your request to CANCEL your appointment and it has successfully been canceled:\n\n📅 {{ $json.Date }}\n⏰ {{ $json.Time }}\n👨‍⚕️ {{ $json[\"Doctor_Name\"] }}\n📋 {{ $json[\"Appointment_Type\"] }}\n\nYou can book appontment at a more suitable time via the link on our website.\n\nNeed help? Call us at [CLINIC_PHONE]\n\nDr. Jennifer's Clinic",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        656,
+        -624
+      ],
+      "id": "32d5f1db-8fde-4c0f-8ecb-09aebe0d4458",
+      "name": "Patient: Appointment Cancelled Email",
+      "webhookId": "2f595886-94f8-4f87-a7c7-14c9b922369b",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "64z35ERC2QSGzngJ",
+          "name": "Gmail account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Gmail Trigger": {
+      "main": [
+        [
+          {
+            "node": "Filter Reply Emails",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Reply Emails": {
+      "main": [
+        [
+          {
+            "node": "Lookup Patient",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lookup Patient": {
+      "main": [
+        [
+          {
+            "node": "Pattern Matching (1/2/3)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pattern Matching (1/2/3)": {
+      "main": [
+        [
+          {
+            "node": "Needs AI Classification?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Needs AI Classification?": {
+      "main": [
+        [
+          {
+            "node": "Classify text for violations",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Route by Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse AI Response": {
+      "main": [
+        [
+          {
+            "node": "Route by Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route by Response": {
+      "main": [
+        [
+          {
+            "node": "Update Status: Confirmed",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "HTTP Request: Automatically cancel appointment",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Patient: Send Reschedule Link",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send Clarification Email",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Staff: Patient Not Found Email",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Past Appointment Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Status: Confirmed": {
+      "main": [
+        [
+          {
+            "node": "Send Confirmation Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Patient: Send Reschedule Link": {
+      "main": [
+        [
+          {
+            "node": "Staff: Reschedule Link Sent Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Classify text for violations": {
+      "main": [
+        [
+          {
+            "node": "Parse AI Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Staff: Appointment Cancelled": {
+      "main": [
+        []
+      ]
+    },
+    "HTTP Request: Automatically cancel appointment": {
+      "main": [
+        [
+          {
+            "node": "Patient: Appointment Cancelled Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Patient: Appointment Cancelled Email": {
+      "main": [
+        [
+          {
+            "node": "Staff: Appointment Cancelled",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "68978d4faed3a54d15dc491ac7bc3921e14fbabe15864d3e7ff129b93a7ede40"
+  }
+}

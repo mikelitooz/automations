@@ -1,0 +1,697 @@
+{
+  "nodes": [
+    {
+      "parameters": {
+        "path": "vapi-results",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        820,
+        440
+      ],
+      "id": "a1b2c3d4-e5f6-7890-abcd-1234567890ab",
+      "name": "Webhook: Vapi Results",
+      "webhookId": "vapi-call-results",
+      "notes": "Receives end-of-call-report from Vapi with structured outcome data"
+    },
+    {
+      "parameters": {
+        "jsCode": "/**\n * Parse Vapi webhook payload and extract structured outcome\n * \n * Expected payload structure:\n * {\n *   message: {\n *     type: \"end-of-call-report\",\n *     endedReason: \"customer-ended-call\" | \"assistant-ended-call\" | \"voicemail-reached\",\n *     call: { \n *       id, status, phoneNumberId, \n *       customer: { \n *         number, name,\n *         extension: { appointmentUid, isoTimeFormat, patientEmail }\n *       } \n *     },\n *     analysis: {\n *       summary: \"...\",\n *       structuredData: { outcome, patientResponse, needsFollowup, appointmentConfirmed }\n *     },\n *     artifact: { transcript, recording: { url }, messages }\n *   }\n * }\n */\n\nconst payload = $input.first().json.body;\nconst message = payload.message;\n\n// Validate webhook type\nif (message.type !== \"end-of-call-report\") {\n  console.log(`⚠️ Ignoring webhook type: ${message.type}`);\n  return [];\n}\n\n// Extract call data\nconst callData = message.call || {};\nconst customer = callData.customer || {};\nconst customerExtension = customer.extension || {};\nconst analysis = message.analysis || {};\nconst structuredData = analysis.structuredData || {};\nconst artifact = message.artifact || {};\n\n// Extract patient identifiers\nconst patientPhone = customer.number || \"\";\nconst patientName = customer.name || \"\";\nconst appointmentUid = customerExtension.appointmentUid || \"\";\nconst isoTimeFormat = customerExtension.isoTimeFormat || \"\";\nconst patientEmail = customerExtension.patientEmail || \"\";\n\n// Determine outcome (use structuredData if available, otherwise infer from endedReason)\nlet outcome = structuredData.outcome || \"unanswered\";\nif (message.endedReason === \"voicemail-reached\" && outcome !== \"confirmed\") {\n  outcome = \"unanswered\";\n}\n\n// Prepare output\nconst result = {\n  // Call metadata\n  callId: callData.id,\n  callStatus: callData.status,\n  endedReason: message.endedReason,\n  \n  // Patient identification (multiple fields for reliable matching)\n  Appointment_Uid: appointmentUid,\n  Patient_Phone: patientPhone,\n  Patient_Email: patientEmail,\n  Patient_Name: patientName,\n  ISO_Time_Format: isoTimeFormat,\n  \n  // Structured outcome data\n  outcome: outcome,\n  patientResponse: structuredData.patientResponse || \"No response captured\",\n  needsFollowup: structuredData.needsFollowup || false,\n  appointmentConfirmed: structuredData.appointmentConfirmed || false,\n  \n  // Call analysis\n  callSummary: analysis.summary || \"No summary available\",\n  \n  // Call artifacts\n  transcriptUrl: artifact.transcript || \"\",\n  recordingUrl: artifact.recording?.url || \"\",\n  \n  // Timestamps\n  callCompletedAt: new Date().toISOString(),\n  \n  // Raw payload (for debugging)\n  rawPayload: JSON.stringify(payload, null, 2)\n};\n\nconsole.log(`\n📞 Vapi Call Result Received:\n  - Call ID: ${result.callId}\n  - Appointment UID: ${result.Appointment_Uid}\n  - Patient Phone: ${result.Patient_Phone}\n  - Patient Email: ${result.Patient_Email}\n  - Outcome: ${result.outcome}\n  - Confirmed: ${result.appointmentConfirmed}\n  - Needs Follow-up: ${result.needsFollowup}\n`);\n\nreturn [{ json: result }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1060,
+        440
+      ],
+      "id": "b2c3d4e5-f6a7-8901-bcde-2345678901bc",
+      "name": "Parse Webhook Payload"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.outcome }}",
+                    "rightValue": "confirmed",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "confirmed"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.outcome }}",
+                    "rightValue": "cancel",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "cancel"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.outcome }}",
+                    "rightValue": "reschedule",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "reschedule"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.outcome }}",
+                    "rightValue": "unanswered",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "unanswered"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        1300,
+        440
+      ],
+      "id": "c3d4e5f6-a7b8-9012-cdef-3456789012cd",
+      "name": "Route by Outcome"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "1qwRj5vMXyrCiuAohIX-gcOmGK1M9Hc1BMLkK0vBE_3Y",
+          "mode": "list",
+          "cachedResultName": "Medical_Workflow"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "appointment"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Status": "Confirmed",
+            "Confirmed_At": "={{ $json.callCompletedAt }}",
+            "Confirmed_Via": "Voice Call",
+            "Voice_Call_Outcome": "={{ $json.outcome }}",
+            "Voice_Call_Summary": "={{ $json.callSummary }}",
+            "Voice_Call_Recording_URL": "={{ $json.recordingUrl }}"
+          },
+          "matchingColumns": [
+            "Appointment_Uid"
+          ],
+          "schema": [
+            {
+              "id": "Appointment_Uid",
+              "displayName": "Appointment_Uid",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Status",
+              "displayName": "Status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Confirmed_At",
+              "displayName": "Confirmed_At",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Confirmed_Via",
+              "displayName": "Confirmed_Via",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Voice_Call_Outcome",
+              "displayName": "Voice_Call_Outcome",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Voice_Call_Summary",
+              "displayName": "Voice_Call_Summary",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Voice_Call_Recording_URL",
+              "displayName": "Voice_Call_Recording_URL",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1560,
+        260
+      ],
+      "id": "d4e5f6a7-b8c9-0123-def0-4567890123de",
+      "name": "Update Sheet: Confirmed",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "cN7VVccmwTr9blH1",
+          "name": "Google Sheets account"
+        }
+      },
+      "notes": "Patient confirmed attendance via voice call"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "1qwRj5vMXyrCiuAohIX-gcOmGK1M9Hc1BMLkK0vBE_3Y",
+          "mode": "list",
+          "cachedResultName": "Medical_Workflow"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "appointment"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Status": "Cancelled",
+            "Cancelled_At": "={{ $json.callCompletedAt }}",
+            "Cancelled_Via": "Voice Call",
+            "Cancellation_Reason": "Patient requested cancellation via voice call",
+            "Voice_Call_Outcome": "={{ $json.outcome }}",
+            "Voice_Call_Summary": "={{ $json.callSummary }}",
+            "Voice_Call_Recording_URL": "={{ $json.recordingUrl }}"
+          },
+          "matchingColumns": [
+            "Appointment_Uid"
+          ],
+          "schema": [
+            {
+              "id": "Appointment_Uid",
+              "displayName": "Appointment_Uid",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Status",
+              "displayName": "Status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Cancelled_At",
+              "displayName": "Cancelled_At",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Cancelled_Via",
+              "displayName": "Cancelled_Via",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Cancellation_Reason",
+              "displayName": "Cancellation_Reason",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Voice_Call_Outcome",
+              "displayName": "Voice_Call_Outcome",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Voice_Call_Summary",
+              "displayName": "Voice_Call_Summary",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Voice_Call_Recording_URL",
+              "displayName": "Voice_Call_Recording_URL",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1560,
+        420
+      ],
+      "id": "e5f6a7b8-c9d0-1234-ef01-5678901234ef",
+      "name": "Update Sheet: Cancelled",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "cN7VVccmwTr9blH1",
+          "name": "Google Sheets account"
+        }
+      },
+      "notes": "Patient requested cancellation"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "1qwRj5vMXyrCiuAohIX-gcOmGK1M9Hc1BMLkK0vBE_3Y",
+          "mode": "list",
+          "cachedResultName": "Medical_Workflow"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "appointment"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Status": "Rescheduling",
+            "Rescheduled_At": "={{ $json.callCompletedAt }}",
+            "Rescheduled_Via": "Voice Call",
+            "Voice_Call_Outcome": "={{ $json.outcome }}",
+            "Voice_Call_Summary": "={{ $json.callSummary }}",
+            "Voice_Call_Recording_URL": "={{ $json.recordingUrl }}",
+            "Needs_Reschedule_Link": "TRUE"
+          },
+          "matchingColumns": [
+            "Appointment_Uid"
+          ],
+          "schema": [
+            {
+              "id": "Appointment_Uid",
+              "displayName": "Appointment_Uid",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Status",
+              "displayName": "Status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Rescheduled_At",
+              "displayName": "Rescheduled_At",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Rescheduled_Via",
+              "displayName": "Rescheduled_Via",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Voice_Call_Outcome",
+              "displayName": "Voice_Call_Outcome",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Voice_Call_Summary",
+              "displayName": "Voice_Call_Summary",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Voice_Call_Recording_URL",
+              "displayName": "Voice_Call_Recording_URL",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Needs_Reschedule_Link",
+              "displayName": "Needs_Reschedule_Link",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1560,
+        580
+      ],
+      "id": "f6a7b8c9-d0e1-2345-f012-6789012345f0",
+      "name": "Update Sheet: Reschedule",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "cN7VVccmwTr9blH1",
+          "name": "Google Sheets account"
+        }
+      },
+      "notes": "Patient requested to reschedule - will trigger reschedule link email"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "1qwRj5vMXyrCiuAohIX-gcOmGK1M9Hc1BMLkK0vBE_3Y",
+          "mode": "list",
+          "cachedResultName": "Medical_Workflow"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "appointment"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Voicemail_Left": "TRUE",
+            "Voice_Call_Outcome": "={{ $json.outcome }}",
+            "Voice_Call_Summary": "={{ $json.callSummary }}",
+            "Voice_Call_Recording_URL": "={{ $json.recordingUrl }}"
+          },
+          "matchingColumns": [
+            "Appointment_Uid"
+          ],
+          "schema": [
+            {
+              "id": "Appointment_Uid",
+              "displayName": "Appointment_Uid",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Voicemail_Left",
+              "displayName": "Voicemail_Left",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Voice_Call_Outcome",
+              "displayName": "Voice_Call_Outcome",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Voice_Call_Summary",
+              "displayName": "Voice_Call_Summary",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Voice_Call_Recording_URL",
+              "displayName": "Voice_Call_Recording_URL",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1560,
+        740
+      ],
+      "id": "a7b8c9d0-e1f2-3456-0123-7890123456a0",
+      "name": "Update Sheet: Unanswered",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "cN7VVccmwTr9blH1",
+          "name": "Google Sheets account"
+        }
+      },
+      "notes": "Call went to voicemail or was not answered - 2hr reminder will still send"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Send Cal.com reschedule link via email\n// This node prepares data for email workflow or direct email send\n\nconst data = $input.first().json;\n\nreturn [{\n  json: {\n    ...data,\n    action: \"send_reschedule_link\",\n    emailSubject: \"Reschedule Your Appointment with Dr. Jennifer\",\n    emailBody: `Hi ${data.Patient_Name || 'there'},\\n\\nThank you for speaking with us about your appointment. As discussed, we'd be happy to help you reschedule.\\n\\nPlease use the link below to choose a new time that works better for you:\\n\\n[Cal.com Reschedule Link]\\n\\nIf you have any questions, please call us at [Office Phone].\\n\\nBest regards,\\nDr. Jennifer's Office`\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1820,
+        580
+      ],
+      "id": "b8c9d0e1-f2a3-4567-1234-8901234567b1",
+      "name": "Prepare Reschedule Email",
+      "notes": "TODO: Connect to email sending workflow or Gmail node"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Send cancellation confirmation via email\n// This node prepares data for email workflow or direct email send\n\nconst data = $input.first().json;\n\nreturn [{\n  json: {\n    ...data,\n    action: \"send_cancellation_confirmation\",\n    emailSubject: \"Appointment Cancellation Confirmation - Dr. Jennifer\",\n    emailBody: `Hi ${data.Patient_Name || 'there'},\\n\\nThis email confirms that your appointment on [Date] at [Time] has been cancelled as requested.\\n\\nIf you would like to schedule a new appointment in the future, please visit:\\n\\n[Cal.com Booking Link]\\n\\nOr call us at [Office Phone].\\n\\nThank you,\\nDr. Jennifer's Office`\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1820,
+        420
+      ],
+      "id": "c9d0e1f2-a3b4-5678-2345-9012345678c2",
+      "name": "Prepare Cancellation Email",
+      "notes": "TODO: Connect to email sending workflow or Gmail node"
+    }
+  ],
+  "connections": {
+    "Webhook: Vapi Results": {
+      "main": [
+        [
+          {
+            "node": "Parse Webhook Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Webhook Payload": {
+      "main": [
+        [
+          {
+            "node": "Route by Outcome",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route by Outcome": {
+      "main": [
+        [
+          {
+            "node": "Update Sheet: Confirmed",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Update Sheet: Cancelled",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Update Sheet: Reschedule",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Update Sheet: Unanswered",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Sheet: Reschedule": {
+      "main": [
+        [
+          {
+            "node": "Prepare Reschedule Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Sheet: Cancelled": {
+      "main": [
+        [
+          {
+            "node": "Prepare Cancellation Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "68978d4faed3a54d15dc491ac7bc3921e14fbabe15864d3e7ff129b93a7ede40"
+  }
+}

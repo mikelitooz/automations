@@ -1,0 +1,426 @@
+{
+  "name": "Marcus Real Estate - AI Qualification",
+  "nodes": [
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "event": "rowAdded",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $env.GOOGLE_SHEETS_ID }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Master Leads",
+          "mode": "name"
+        },
+        "options": {}
+      },
+      "id": "google-sheets-trigger",
+      "name": "Watch for New Leads",
+      "type": "n8n-nodes-base.googleSheetsTrigger",
+      "typeVersion": 1.1,
+      "position": [240, 400],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "googleSheetsOAuth2",
+          "name": "Google Sheets OAuth2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": ""
+          },
+          "conditions": [
+            {
+              "id": "filter-unqualified",
+              "leftValue": "={{ $json['Lead Score'] }}",
+              "rightValue": "Unqualified",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            },
+            {
+              "id": "filter-new-status",
+              "leftValue": "={{ $json['Status'] }}",
+              "rightValue": "New",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combineOperation": "all"
+        },
+        "options": {}
+      },
+      "id": "filter-new-leads",
+      "name": "Filter: Only Unqualified New Leads",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.1,
+      "position": [460, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Prepare lead context for Claude AI qualification\nconst lead = $input.first().json;\n\nconst qualificationPrompt = `You are an AI assistant for Marcus, a real estate agent. A new lead just came in. Your job is to:\n\n1. Analyze the lead information\n2. Extract key details (budget, timeline, pre-approval, priorities)\n3. Assign a lead score (HOT/WARM/COLD)\n4. Generate a personalized response\n\nLEAD INFORMATION:\n- Name: ${lead.Name || 'Not provided'}\n- Phone: ${lead.Phone || 'Not provided'}\n- Email: ${lead.Email || 'Not provided'}\n- Budget: ${lead.Budget || 'Not provided'}\n- Property Type: ${lead['Property Type'] || 'Not provided'}\n- Source: ${lead.Source || 'Unknown'}\n- Message/Priorities: ${lead.Priorities || 'None provided'}\n\nQUALIFICATION CRITERIA:\n\nHOT LEAD:\n- Has specific budget mentioned\n- Timeline: 1-3 months (\"ASAP\", \"urgent\", \"need soon\", \"ready now\")\n- Pre-approved OR mentions lender/financing\n- Specific location/requirements\n- Multiple viewings interest\n\nWARM LEAD:\n- General budget range\n- Timeline: 3-6 months (\"looking\", \"considering\", \"planning\")\n- Mentions pre-approval interest\n- Some specific requirements\n\nCOLD LEAD:\n- No budget mentioned\n- Timeline: 6+ months or \"just browsing\"\n- Very vague requirements\n- No urgency signals\n\nRESPONSE FORMAT (JSON):\n{\n  \"leadScore\": \"HOT\" | \"WARM\" | \"COLD\",\n  \"extractedBudget\": \"dollar amount or range\",\n  \"timeline\": \"1-3 months\" | \"3-6 months\" | \"6+ months\" | \"Unknown\",\n  \"preapprovalStatus\": \"Yes\" | \"No\" | \"Needs Lender\" | \"Unknown\",\n  \"priorities\": \"comma-separated list of key requirements\",\n  \"reasoning\": \"2-3 sentences explaining the lead score\",\n  \"personalizedResponse\": \"A warm, professional SMS response (max 160 chars) addressing their needs\",\n  \"emailSubject\": \"Catchy email subject line\",\n  \"emailBody\": \"Professional email response (HTML format) that:\n    - Greets them by name\n    - Acknowledges their specific needs\n    - Mentions budget/timeline if known\n    - Offers immediate value (property recommendations)\n    - Includes clear next steps\n    - For HOT leads: emphasizes urgency\n    - For WARM leads: builds relationship\n    - For COLD leads: nurtures interest\n    - Signs off as Marcus\"\n}\n\nAnalyze the lead and provide your qualification in valid JSON format only.`;\n\nreturn [{\n  json: {\n    leadData: lead,\n    prompt: qualificationPrompt,\n    leadName: lead.Name,\n    leadPhone: lead.Phone,\n    leadEmail: lead.Email,\n    rowId: lead.rowNumber || lead['Row ID'] || 'unknown'\n  }\n}];"
+      },
+      "id": "prepare-claude-prompt",
+      "name": "Prepare Claude AI Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://api.anthropic.com/v1/messages",
+        "method": "POST",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "={{ $env.CLAUDE_API_KEY }}"
+            },
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            },
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"claude-3-5-sonnet-20241022\",\n  \"max_tokens\": 2048,\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": {{ $json.prompt | quote }}\n    }\n  ],\n  \"temperature\": 0.7\n}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 30000
+        }
+      },
+      "id": "claude-api-call",
+      "name": "Claude AI Lead Qualification",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse Claude's response and extract qualification data\nconst input = $input.first().json;\nconst claudeResponse = input.content?.[0]?.text;\n\nif (!claudeResponse) {\n  throw new Error('No response from Claude API');\n}\n\n// Extract JSON from Claude's response (handles markdown code blocks)\nlet qualificationData;\ntry {\n  // Try to find JSON in markdown code blocks\n  const jsonMatch = claudeResponse.match(/```(?:json)?\\s*([\\s\\S]*?)```/);\n  if (jsonMatch) {\n    qualificationData = JSON.parse(jsonMatch[1].trim());\n  } else {\n    // Try to parse the entire response as JSON\n    qualificationData = JSON.parse(claudeResponse);\n  }\n} catch (error) {\n  console.error('Failed to parse Claude response:', claudeResponse);\n  throw new Error('Invalid JSON response from Claude: ' + error.message);\n}\n\n// Validate required fields\nconst required = ['leadScore', 'extractedBudget', 'timeline', 'preapprovalStatus', 'personalizedResponse', 'emailSubject', 'emailBody'];\nfor (const field of required) {\n  if (!qualificationData[field]) {\n    throw new Error(`Missing required field: ${field}`);\n  }\n}\n\nreturn [{\n  json: {\n    ...qualificationData,\n    rawResponse: claudeResponse,\n    processedAt: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "parse-claude-response",
+      "name": "Parse Claude Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $env.GOOGLE_SHEETS_ID }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Master Leads",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Lead Score": "={{ $json.leadScore }}",
+            "Budget": "={{ $json.extractedBudget }}",
+            "Timeline": "={{ $json.timeline }}",
+            "Preapproval Status": "={{ $json.preapprovalStatus }}",
+            "Priorities": "={{ $json.priorities }}",
+            "Status": "=Qualified",
+            "Last Contact": "={{ $now.toISO() }}",
+            "Notes": "=AI Qualification: {{ $json.reasoning }}"
+          }
+        },
+        "options": {
+          "cellFormat": "USER_ENTERED"
+        }
+      },
+      "id": "update-sheet-qualification",
+      "name": "Update Lead in Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [1340, 300],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "googleSheetsOAuth2",
+          "name": "Google Sheets OAuth2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fromPhoneNumber": "={{ $env.TWILIO_PHONE_NUMBER }}",
+        "toPhoneNumber": "={{ $('Watch for New Leads').item.json.Phone }}",
+        "message": "={{ $json.personalizedResponse }}",
+        "options": {}
+      },
+      "id": "send-sms-response",
+      "name": "Send SMS to Lead",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 2,
+      "position": [1560, 180],
+      "credentials": {
+        "twilioApi": {
+          "id": "twilioApi",
+          "name": "Twilio API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $env.AGENT_EMAIL }}",
+        "toEmail": "={{ $('Watch for New Leads').item.json.Email }}",
+        "subject": "={{ $json.emailSubject }}",
+        "emailType": "html",
+        "message": "={{ $json.emailBody }}",
+        "options": {}
+      },
+      "id": "send-email-response",
+      "name": "Send Email to Lead",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [1560, 340],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "gmailOAuth2",
+          "name": "Gmail OAuth2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false
+          },
+          "conditions": [
+            {
+              "id": "is-hot-lead",
+              "leftValue": "={{ $json.leadScore }}",
+              "rightValue": "HOT",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combineOperation": "any"
+        },
+        "options": {}
+      },
+      "id": "check-hot-lead",
+      "name": "Is HOT Lead?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.1,
+      "position": [1560, 500]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.TWILIO_CALL_API_URL || 'https://api.twilio.com/2010-04-01/Accounts/' + $env.TWILIO_ACCOUNT_SID + '/Calls.json' }}",
+        "method": "POST",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"To\": {{ $env.AGENT_PHONE | quote }},\n  \"From\": {{ $env.TWILIO_PHONE_NUMBER | quote }},\n  \"Twiml\": \"<Response><Say voice='alice'>Hot lead alert! {{ $('Watch for New Leads').item.json.Name }} just inquired. Budget: {{ $json.extractedBudget }}. Timeline: {{ $json.timeline }}. Call them now at {{ $('Watch for New Leads').item.json.Phone }}. I repeat: {{ $('Watch for New Leads').item.json.Phone }}</Say></Response>\"\n}",
+        "options": {}
+      },
+      "id": "call-agent-hot-lead",
+      "name": "Call Agent (HOT Lead Alert)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1780, 420],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "twilioBasicAuth",
+          "name": "Twilio Basic Auth"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fromPhoneNumber": "={{ $env.TWILIO_PHONE_NUMBER }}",
+        "toPhoneNumber": "={{ $env.AGENT_PHONE }}",
+        "message": "=🔥 HOT LEAD ALERT! 🔥\n\n{{ $('Watch for New Leads').item.json.Name }}\n📞 {{ $('Watch for New Leads').item.json.Phone }}\n💰 Budget: {{ $json.extractedBudget }}\n⏰ Timeline: {{ $json.timeline }}\n🏠 {{ $json.priorities }}\n\n✅ Pre-approved: {{ $json.preapprovalStatus }}\n\nCALL THEM NOW! Auto-response already sent.",
+        "options": {}
+      },
+      "id": "sms-agent-hot-lead",
+      "name": "SMS Agent (HOT Lead)",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 2,
+      "position": [1780, 580],
+      "credentials": {
+        "twilioApi": {
+          "id": "twilioApi",
+          "name": "Twilio API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "## AI QUALIFICATION WORKFLOW\n\nThis workflow:\n1. Monitors Master Leads sheet for new unqualified leads\n2. Sends lead data to Claude AI for analysis\n3. Claude extracts:\n   - Budget\n   - Timeline\n   - Pre-approval status\n   - Priorities\n   - Lead Score (HOT/WARM/COLD)\n4. Generates personalized SMS + Email responses\n5. Sends responses within 60 seconds\n6. For HOT leads: Calls agent immediately\n7. Updates sheet with qualification data\n\nHOT leads trigger instant agent notification.\nWARM/COLD leads enter nurture sequences (Workflow 5).",
+        "height": 400,
+        "width": 320,
+        "color": 5
+      },
+      "id": "sticky-note-ai",
+      "name": "Sticky Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [240, 40]
+    },
+    {
+      "parameters": {
+        "content": "## HOT LEAD ALERT SYSTEM\n\nWhen lead score = HOT:\n- Agent receives phone call\n- Agent receives SMS with lead details\n- Lead already received auto-response\n- Strike while iron is hot!",
+        "height": 220,
+        "width": 280,
+        "color": 2
+      },
+      "id": "sticky-note-hot",
+      "name": "Sticky Note (Hot Leads)",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [1780, 240]
+    }
+  ],
+  "connections": {
+    "Watch for New Leads": {
+      "main": [
+        [
+          {
+            "node": "Filter: Only Unqualified New Leads",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter: Only Unqualified New Leads": {
+      "main": [
+        [
+          {
+            "node": "Prepare Claude AI Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Claude AI Prompt": {
+      "main": [
+        [
+          {
+            "node": "Claude AI Lead Qualification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claude AI Lead Qualification": {
+      "main": [
+        [
+          {
+            "node": "Parse Claude Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Claude Response": {
+      "main": [
+        [
+          {
+            "node": "Update Lead in Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Lead in Sheet": {
+      "main": [
+        [
+          {
+            "node": "Send SMS to Lead",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Send Email to Lead",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Is HOT Lead?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is HOT Lead?": {
+      "main": [
+        [
+          {
+            "node": "Call Agent (HOT Lead Alert)",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "SMS Agent (HOT Lead)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "createdAt": "2025-01-22T00:00:00.000Z",
+      "updatedAt": "2025-01-22T00:00:00.000Z",
+      "id": "real-estate-automation",
+      "name": "Real Estate Automation"
+    }
+  ],
+  "triggerCount": 1,
+  "updatedAt": "2025-01-22T00:00:00.000Z",
+  "versionId": "1"
+}

@@ -1,0 +1,2077 @@
+{
+  "nodes": [
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "1qwRj5vMXyrCiuAohIX-gcOmGK1M9Hc1BMLkK0vBE_3Y",
+          "mode": "list",
+          "cachedResultName": "Medical_Workflow"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "appointment",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1qwRj5vMXyrCiuAohIX-gcOmGK1M9Hc1BMLkK0vBE_3Y/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "24hr_Reminder_Sent": "TRUE",
+            "row_number": 0
+          },
+          "matchingColumns": [
+            "Patient_Name",
+            "Date",
+            "Time"
+          ],
+          "schema": [
+            {
+              "id": "Appointment_Uid",
+              "displayName": "Appointment_Uid",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Date",
+              "displayName": "Date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Time",
+              "displayName": "Time",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Patient_Name",
+              "displayName": "Patient_Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Patient_Phone",
+              "displayName": "Patient_Phone",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Patient_Email",
+              "displayName": "Patient_Email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Doctor_Name",
+              "displayName": "Doctor_Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Appointment_Type",
+              "displayName": "Appointment_Type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Status",
+              "displayName": "Status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "48hr_Reminder_Sent",
+              "displayName": "48hr_Reminder_Sent",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "24hr_Reminder_Sent",
+              "displayName": "24hr_Reminder_Sent",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "2hr_Reminder_Sent",
+              "displayName": "2hr_Reminder_Sent",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Confirmed_At",
+              "displayName": "Confirmed_At",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Confirmed_Via",
+              "displayName": "Confirmed_Via",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Cancelled_At",
+              "displayName": "Cancelled_At",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Cancelled_Via",
+              "displayName": "Cancelled_Via",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Cancellation_Reason",
+              "displayName": "Cancellation_Reason",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Rescheduled_At",
+              "displayName": "Rescheduled_At",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Rescheduled_Via",
+              "displayName": "Rescheduled_Via",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Staff_Alerted",
+              "displayName": "Staff_Alerted",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "ISO_Time_Format",
+              "displayName": "ISO_Time_Format",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "20hr_Voice_Call_Made",
+              "displayName": "20hr_Voice_Call_Made",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Voice_Call_Agent_Call_Summary",
+              "displayName": "Voice_Call_Agent_Call_Summary",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Voice_Call_Agent_Action_Taken",
+              "displayName": "Voice_Call_Agent_Action_Taken",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "row_number",
+              "displayName": "row_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "readOnly": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1328,
+        2160
+      ],
+      "id": "0eda7e58-7693-4fbc-ae47-3b2bd02d2f93",
+      "name": "Update 24hr Flag",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "Gu4sptcmPE5XoUXG",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "1qwRj5vMXyrCiuAohIX-gcOmGK1M9Hc1BMLkK0vBE_3Y",
+          "mode": "list",
+          "cachedResultName": "Medical_Workflow"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "appointment",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1qwRj5vMXyrCiuAohIX-gcOmGK1M9Hc1BMLkK0vBE_3Y/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Status": "Cancelled",
+            "2hr_Reminder_Sent": "TRUE",
+            "row_number": 0
+          },
+          "matchingColumns": [
+            "Patient_Name",
+            "Date",
+            "Time"
+          ],
+          "schema": [
+            {
+              "id": "Appointment_Uid",
+              "displayName": "Appointment_Uid",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Date",
+              "displayName": "Date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Time",
+              "displayName": "Time",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Patient_Name",
+              "displayName": "Patient_Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Patient_Phone",
+              "displayName": "Patient_Phone",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Patient_Email",
+              "displayName": "Patient_Email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Doctor_Name",
+              "displayName": "Doctor_Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Appointment_Type",
+              "displayName": "Appointment_Type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Status",
+              "displayName": "Status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "48hr_Reminder_Sent",
+              "displayName": "48hr_Reminder_Sent",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "24hr_Reminder_Sent",
+              "displayName": "24hr_Reminder_Sent",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "2hr_Reminder_Sent",
+              "displayName": "2hr_Reminder_Sent",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Confirmed_At",
+              "displayName": "Confirmed_At",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Confirmed_Via",
+              "displayName": "Confirmed_Via",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Cancelled_At",
+              "displayName": "Cancelled_At",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Cancelled_Via",
+              "displayName": "Cancelled_Via",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Cancellation_Reason",
+              "displayName": "Cancellation_Reason",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Rescheduled_At",
+              "displayName": "Rescheduled_At",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Rescheduled_Via",
+              "displayName": "Rescheduled_Via",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Staff_Alerted",
+              "displayName": "Staff_Alerted",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "ISO_Time_Format",
+              "displayName": "ISO_Time_Format",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "20hr_Voice_Call_Made",
+              "displayName": "20hr_Voice_Call_Made",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Voice_Call_Agent_Call_Summary",
+              "displayName": "Voice_Call_Agent_Call_Summary",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Voice_Call_Agent_Action_Taken",
+              "displayName": "Voice_Call_Agent_Action_Taken",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "row_number",
+              "displayName": "row_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "readOnly": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1328,
+        2448
+      ],
+      "id": "4dde6e4d-a7e2-4aaa-8440-5f12a4aa738e",
+      "name": "Update Status to Cancelled",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "Gu4sptcmPE5XoUXG",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "1qwRj5vMXyrCiuAohIX-gcOmGK1M9Hc1BMLkK0vBE_3Y",
+          "mode": "list",
+          "cachedResultName": "Medical_Workflow"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "appointment",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1qwRj5vMXyrCiuAohIX-gcOmGK1M9Hc1BMLkK0vBE_3Y/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "2hr_Reminder_Sent": "TRUE",
+            "row_number": 0
+          },
+          "matchingColumns": [
+            "Patient_Name",
+            "Date",
+            "Time"
+          ],
+          "schema": [
+            {
+              "id": "Appointment_Uid",
+              "displayName": "Appointment_Uid",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Date",
+              "displayName": "Date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Time",
+              "displayName": "Time",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Patient_Name",
+              "displayName": "Patient_Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Patient_Phone",
+              "displayName": "Patient_Phone",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Patient_Email",
+              "displayName": "Patient_Email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Doctor_Name",
+              "displayName": "Doctor_Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Appointment_Type",
+              "displayName": "Appointment_Type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Status",
+              "displayName": "Status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "48hr_Reminder_Sent",
+              "displayName": "48hr_Reminder_Sent",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "24hr_Reminder_Sent",
+              "displayName": "24hr_Reminder_Sent",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "2hr_Reminder_Sent",
+              "displayName": "2hr_Reminder_Sent",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Confirmed_At",
+              "displayName": "Confirmed_At",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Confirmed_Via",
+              "displayName": "Confirmed_Via",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Cancelled_At",
+              "displayName": "Cancelled_At",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Cancelled_Via",
+              "displayName": "Cancelled_Via",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Cancellation_Reason",
+              "displayName": "Cancellation_Reason",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Rescheduled_At",
+              "displayName": "Rescheduled_At",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Rescheduled_Via",
+              "displayName": "Rescheduled_Via",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Staff_Alerted",
+              "displayName": "Staff_Alerted",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "ISO_Time_Format",
+              "displayName": "ISO_Time_Format",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "20hr_Voice_Call_Made",
+              "displayName": "20hr_Voice_Call_Made",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Voice_Call_Agent_Call_Summary",
+              "displayName": "Voice_Call_Agent_Call_Summary",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Voice_Call_Agent_Action_Taken",
+              "displayName": "Voice_Call_Agent_Action_Taken",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "row_number",
+              "displayName": "row_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "readOnly": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1328,
+        2640
+      ],
+      "id": "e4813264-d04c-4aee-b7ca-50ced14f8b3b",
+      "name": "Update 2hr Flag (Confirmed)",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "Gu4sptcmPE5XoUXG",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json[\"Patient_Email\"] }}",
+        "subject": "=Appointment Cancelled - No Confirmation Received",
+        "emailType": "text",
+        "message": "=Hi {{ $json[\"Patient_Name\"] }},\n\nYour appointment scheduled for {{ $json.formattedTime }} today has been automatically cancelled because we did not receive a confirmation.\n\nIf you still need an appointment, please visit our website to book a new time or join our waitlist.\n\nSorry for any inconvenience.\nDr. Jennifer's Clinic",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        1104,
+        2448
+      ],
+      "id": "7ee5bf14-f5ed-4316-81f4-8f9955594238",
+      "name": "2hr Auto-Cancel Email (Not Confirmed)",
+      "webhookId": "1e48e0e3-7d8e-4114-929e-79b67d21472a",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "jg90AbaYwktTrzdN",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "1qwRj5vMXyrCiuAohIX-gcOmGK1M9Hc1BMLkK0vBE_3Y",
+          "mode": "list",
+          "cachedResultName": "Medical_Workflow",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1qwRj5vMXyrCiuAohIX-gcOmGK1M9Hc1BMLkK0vBE_3Y/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "appointment",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1qwRj5vMXyrCiuAohIX-gcOmGK1M9Hc1BMLkK0vBE_3Y/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "48hr_Reminder_Sent": "TRUE",
+            "row_number": 0
+          },
+          "matchingColumns": [
+            "Patient_Name",
+            "Date",
+            "Time"
+          ],
+          "schema": [
+            {
+              "id": "Appointment_Uid",
+              "displayName": "Appointment_Uid",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Date",
+              "displayName": "Date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Time",
+              "displayName": "Time",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Patient_Name",
+              "displayName": "Patient_Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Patient_Phone",
+              "displayName": "Patient_Phone",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Patient_Email",
+              "displayName": "Patient_Email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Doctor_Name",
+              "displayName": "Doctor_Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Appointment_Type",
+              "displayName": "Appointment_Type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Status",
+              "displayName": "Status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "48hr_Reminder_Sent",
+              "displayName": "48hr_Reminder_Sent",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "24hr_Reminder_Sent",
+              "displayName": "24hr_Reminder_Sent",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "2hr_Reminder_Sent",
+              "displayName": "2hr_Reminder_Sent",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Confirmed_At",
+              "displayName": "Confirmed_At",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Confirmed_Via",
+              "displayName": "Confirmed_Via",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Cancelled_At",
+              "displayName": "Cancelled_At",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Cancelled_Via",
+              "displayName": "Cancelled_Via",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Cancellation_Reason",
+              "displayName": "Cancellation_Reason",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Rescheduled_At",
+              "displayName": "Rescheduled_At",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Rescheduled_Via",
+              "displayName": "Rescheduled_Via",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Staff_Alerted",
+              "displayName": "Staff_Alerted",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "ISO_Time_Format",
+              "displayName": "ISO_Time_Format",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "20hr_Voice_Call_Made",
+              "displayName": "20hr_Voice_Call_Made",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Voice_Call_Agent_Call_Summary",
+              "displayName": "Voice_Call_Agent_Call_Summary",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Voice_Call_Agent_Action_Taken",
+              "displayName": "Voice_Call_Agent_Action_Taken",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "row_number",
+              "displayName": "row_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "readOnly": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1104,
+        1872
+      ],
+      "id": "3944b405-5055-4788-a6b5-27614f9b2c2a",
+      "name": "Update 48hr Flag",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "Gu4sptcmPE5XoUXG",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json[\"Patient_Email\"] }}",
+        "subject": "=⚠️ ACTION REQUIRED - Appointment Tomorrow",
+        "emailType": "text",
+        "message": "=Hi {{ $json[\"Patient_Name\"] }},\n\nWe haven't received your confirmation yet.\n\nAppointment reminder:\n📅 {{ $json.formattedDate }} at {{ $json.formattedTime }}\n👨‍⚕️ With {{ $json[\"Doctor_Name\"] }}\n📋 {{ $json[\"Appointment_Type\"] }}\n\n⚠️ IMPORTANT: If not confirmed in 2 hours before your appointment time, your appointment will be automatically cancelled to allow other patients to fill the spot.\n\nPlease reply NOW:\n1 = Confirm\n2 = Cancel\n3 = Reschedule\n\nBest regards,\nDr. Jennifer's Clinic",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        1104,
+        2064
+      ],
+      "id": "49aab621-24d6-429f-9c49-30d1b702a79c",
+      "name": "24hr Urgent Email (Not Confirmed)",
+      "webhookId": "f504af2d-c282-45ac-b8c9-3ca8445730d3",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "jg90AbaYwktTrzdN",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json[\"Patient_Email\"] }}",
+        "subject": "=Appointment Reminder - Tomorrow",
+        "emailType": "text",
+        "message": "=Hi {{ $json[\"Patient_Name\"] }},\n\nThank you for confirming!\n\nJust a friendly reminder of your appointment tomorrow:\n📅 {{ $json.formattedDate }} at {{ $json.formattedTime }}\n👨‍⚕️ With {{ $json[\"Doctor_Name\"] }}\n📋 {{ $json[\"Appointment_Type\"] }}\n\nPlease arrive 10 minutes early.\n\nSee you tomorrow!\nDr. Jennifer's Clinic",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        1104,
+        2256
+      ],
+      "id": "78d6cd50-c2c5-409d-8a13-f6b81b978326",
+      "name": "24hr Simple Reminder (Confirmed)",
+      "webhookId": "4f452100-a737-414c-934c-e3e1b262d505",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "jg90AbaYwktTrzdN",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json[\"Patient_Email\"] }}",
+        "subject": "=Final Reminder - Appointment in 2 Hours",
+        "emailType": "text",
+        "message": "=Hi {{ $json[\"Patient_Name\"] }},\n\nYour appointment is starting soon!\n\n⏰ {{ $json.formattedTime }} TODAY\n👨‍⚕️ With {{ $json[\"Doctor_Name\"] }}\n📋 {{ $json[\"Appointment_Type\"] }}\n\nSee you shortly!\nDr. Jennifer's Clinic",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        1104,
+        2640
+      ],
+      "id": "4548e3d6-6c07-4d98-be76-122f024a8553",
+      "name": "2hr Final Reminder (Confirmed)",
+      "webhookId": "4f5f7457-4cb7-4294-9a91-8bd87198153e",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "jg90AbaYwktTrzdN",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "1qwRj5vMXyrCiuAohIX-gcOmGK1M9Hc1BMLkK0vBE_3Y",
+          "mode": "list",
+          "cachedResultName": "Medical_Workflow"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "appointment",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1qwRj5vMXyrCiuAohIX-gcOmGK1M9Hc1BMLkK0vBE_3Y/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Staff_Alerted": "TRUE",
+            "row_number": 0
+          },
+          "matchingColumns": [
+            "Patient_Name",
+            "Date",
+            "Time"
+          ],
+          "schema": [
+            {
+              "id": "Appointment_Uid",
+              "displayName": "Appointment_Uid",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Date",
+              "displayName": "Date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Time",
+              "displayName": "Time",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Patient_Name",
+              "displayName": "Patient_Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Patient_Phone",
+              "displayName": "Patient_Phone",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Patient_Email",
+              "displayName": "Patient_Email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Doctor_Name",
+              "displayName": "Doctor_Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Appointment_Type",
+              "displayName": "Appointment_Type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Status",
+              "displayName": "Status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "48hr_Reminder_Sent",
+              "displayName": "48hr_Reminder_Sent",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "24hr_Reminder_Sent",
+              "displayName": "24hr_Reminder_Sent",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "2hr_Reminder_Sent",
+              "displayName": "2hr_Reminder_Sent",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Confirmed_At",
+              "displayName": "Confirmed_At",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Confirmed_Via",
+              "displayName": "Confirmed_Via",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Cancelled_At",
+              "displayName": "Cancelled_At",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Cancelled_Via",
+              "displayName": "Cancelled_Via",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Cancellation_Reason",
+              "displayName": "Cancellation_Reason",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Rescheduled_At",
+              "displayName": "Rescheduled_At",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Rescheduled_Via",
+              "displayName": "Rescheduled_Via",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Staff_Alerted",
+              "displayName": "Staff_Alerted",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "ISO_Time_Format",
+              "displayName": "ISO_Time_Format",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "20hr_Voice_Call_Made",
+              "displayName": "20hr_Voice_Call_Made",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Voice_Call_Agent_Call_Summary",
+              "displayName": "Voice_Call_Agent_Call_Summary",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Voice_Call_Agent_Action_Taken",
+              "displayName": "Voice_Call_Agent_Action_Taken",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "row_number",
+              "displayName": "row_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "readOnly": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1104,
+        2832
+      ],
+      "id": "410640fe-b388-4dd6-b4b8-5480199b5641",
+      "name": "Update Staff Alert Flag",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "Gu4sptcmPE5XoUXG",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "=apolloalpha57@gmail.com",
+        "subject": "=🚨 Appointment Starting Now - {{ $json[\"Patient_Name\"] }}",
+        "emailType": "text",
+        "message": "=STAFF ALERT:\n\nAppointment starting now:\n👤 Patient: {{ $json[\"Patient_Name\"] }}\n📞 Phone: {{ $json[\"Patient_Phone\"] }}\n📧 Email: {{ $json[\"Patient_Email\"] }}\n⏰ Time: {{ $json.formattedTime }}\n👨‍⚕️ Doctor: {{ $json[\"Doctor_Name\"] }}\n📋 Type: {{ $json[\"Appointment_Type\"] }}\n✅ Status: {{ $json.Status }}\n\nPlease prepare for the patient.",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        880,
+        2832
+      ],
+      "id": "285837fd-cad3-4562-8038-0a865aff3dd0",
+      "name": "Staff Alert Email",
+      "webhookId": "e38779e1-ba8e-4209-bff9-e0cda787f68e",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "jg90AbaYwktTrzdN",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.Status }}",
+              "rightValue": "Confirmed",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        880,
+        2544
+      ],
+      "id": "29c10598-7678-4191-bee9-ad99cdd568d9",
+      "name": "Check 2hr Status"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.Status }}",
+              "rightValue": "Confirmed",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              },
+              "id": "795e6709-8a22-4453-b85e-d204df529987"
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        880,
+        2160
+      ],
+      "id": "0b3363d5-9247-4d6b-8b6e-93985b186a69",
+      "name": "Check 24hr Status"
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json[\"Patient_Email\"] }}",
+        "subject": "=Appointment Reminder - {{ $json[\"Doctor_Name\"] }}",
+        "emailType": "text",
+        "message": "=Hi {{ $json[\"Patient_Name\"] }}, this is Dr. Jennifer's office.\n\nAppointment reminder:\n📅 {{ $json.formattedDate }} at {{ $json.formattedTime }}\n👨‍⚕️ With Dr. {{ $json[\"Doctor_Name\"] }}\n📋 {{ $json[\"Appointment_Type\"] }}\n\nPlease reply:\n1 = Confirm\n2 = Cancel\n3 = Reschedule\n\nWe'll update your appointment status once we receive your response.\n\nBest regards,\nDr. Jennifer's Clinic",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        880,
+        1872
+      ],
+      "id": "b1c3902d-bf4c-44c1-9461-bf3fca1744c7",
+      "name": "48hr Reminder Email",
+      "webhookId": "cdcb7296-49f8-451a-8a42-46705c609868",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "jg90AbaYwktTrzdN",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.reminderType }}",
+                    "rightValue": "48hr",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "94dbf1ce-46e2-4274-8cea-c80690e97ece"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "48hr"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.reminderType }}",
+                    "rightValue": "24hr",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "0a9d37d9-fccf-4279-aad1-9f618f360938"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "24hr"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.reminderType }}",
+                    "rightValue": "2hr",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "ebd6699b-e2d1-415e-bd03-4d87269f130b"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "2hr"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.reminderType }}",
+                    "rightValue": "staff",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "32ccab19-29d6-4368-be34-1442103af4bb"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "staff"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.1,
+      "position": [
+        656,
+        2320
+      ],
+      "id": "66d17165-f1f6-4fd6-adf8-b04561d9d331",
+      "name": "Route by Reminder Type"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1qwRj5vMXyrCiuAohIX-gcOmGK1M9Hc1BMLkK0vBE_3Y",
+          "mode": "list",
+          "cachedResultName": "Medical_Workflow",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1qwRj5vMXyrCiuAohIX-gcOmGK1M9Hc1BMLkK0vBE_3Y/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "appointment",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1qwRj5vMXyrCiuAohIX-gcOmGK1M9Hc1BMLkK0vBE_3Y/edit#gid=0"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        208,
+        2352
+      ],
+      "id": "d5be2052-d2eb-482b-9982-3b4a96c3188d",
+      "name": "Read Appointments",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "Gu4sptcmPE5XoUXG",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "seconds",
+              "secondsInterval": 1
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -16,
+        2352
+      ],
+      "id": "410d728a-c9c2-4b50-a320-82f1fd6dc064",
+      "name": "Schedule Trigger (1 hour)"
+    },
+    {
+      "parameters": {
+        "content": "**48HRS REMINDERS  / 24HRS REMINDERS  / 2HRS REMINDERS  / STAFF REMINDERS WORKFLOW**\n",
+        "height": 1328,
+        "width": 1872,
+        "color": 5
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -176,
+        1792
+      ],
+      "typeVersion": 1,
+      "id": "e5849d94-bee8-4946-b667-7a322821aea5",
+      "name": "Sticky Note"
+    },
+    {
+      "parameters": {
+        "jsCode": "/**\n * TEST VERSION - Appointment Reminder Logic\n * Uses MINUTES instead of HOURS for rapid testing\n * - 3-minute reminder (replaces 48hr)\n * - 2-minute reminder (replaces 24hr)\n * - 1-minute reminder (replaces 2hr)\n * Uses ISO_Time_Format field directly (no date/time parsing needed!)\n */\n\nconst now = new Date();\nconst results = [];\n\nlet processed = 0;\nlet skipped = 0;\nlet errors = 0;\n\nfor (const item of $input.all()) {\n  try {\n    const row = item.json;\n    const isoTime = row[\"ISO_Time_Format\"]; // \"2025-10-31T15:45:00Z\"\n    const patientEmail = row[\"Patient Email\"];\n    const patientName = row[\"Patient Name\"];\n    const status = (row[\"Status\"] || \"Pending\").toString();\n\n    // Validate required fields\n    if (!isoTime || !patientEmail || !patientName) {\n      console.warn(`⚠️ Missing required fields for row`);\n      skipped++;\n      continue;\n    }\n\n    // Parse ISO timestamp directly\n    const appt = new Date(isoTime);\n    if (isNaN(appt.getTime())) {\n      console.error(`❌ Invalid ISO_Time_Format: ${isoTime}`);\n      errors++;\n      continue;\n    }\n\n    // Calculate MINUTES until appointment (instead of hours)\n    const minutesUntil = (appt - now) / 60000;\n\n    console.log(`⏰ ${patientName}: ${minutesUntil.toFixed(1)} minutes until appointment`);\n\n    // Skip past appointments (more than 5 minutes past)\n    if (minutesUntil < -5) {\n      console.log(`   ⏭️ Skipped: Past appointment`);\n      skipped++;\n      continue;\n    }\n\n    // Skip appointments more than 10 minutes out (for testing)\n    if (minutesUntil > 10) {\n      console.log(`   ⏭️ Skipped: More than 10 minutes out`);\n      skipped++;\n      continue;\n    }\n\n    // Skip cancelled or rescheduled appointments\n    if (status === \"Cancelled\" || status === \"Rescheduled\") {\n      console.log(`   ⏭️ Skipped: Status = ${status}`);\n      skipped++;\n      continue;\n    }\n\n    // Check reminder flags\n    const sent3min = row[\"48hr_Reminder_Sent\"] === true || row[\"48hr_Reminder_Sent\"] === \"TRUE\";\n    const sent2min = row[\"24hr_Reminder_Sent\"] === true || row[\"24hr_Reminder_Sent\"] === \"TRUE\";\n    const sent1min = row[\"2hr_Reminder_Sent\"] === true || row[\"2hr_Reminder_Sent\"] === \"TRUE\";\n    const staffAlerted = row[\"Staff_Alerted\"] === true || row[\"Staff_Alerted\"] === \"TRUE\";\n\n    // TEST REMINDER WINDOWS (in minutes instead of hours)\n    let reminderType = null;\n\n    // 3-minute reminder (2.5-3.5 minute window) - replaces 48hr\n    if (minutesUntil >= 2.5 && minutesUntil < 3.5 && !sent3min && status === \"Pending\") {\n      reminderType = \"48hr\"; // Keep same type for compatibility\n      console.log(`   ✅ 3-MINUTE REMINDER triggered`);\n    }\n    // 2-minute reminder (1.5-2.5 minute window) - replaces 24hr\n    else if (minutesUntil >= 1.5 && minutesUntil < 2.5 && !sent2min) {\n      reminderType = \"24hr\"; // Keep same type for compatibility\n      console.log(`   ✅ 2-MINUTE REMINDER triggered`);\n    }\n    // 1-minute reminder (0.5-1.5 minute window) - replaces 2hr\n    else if (minutesUntil >= 0.5 && minutesUntil < 1.5 && !sent1min) {\n      reminderType = \"2hr\"; // Keep same type for compatibility\n      console.log(`   ✅ 1-MINUTE REMINDER triggered`);\n    }\n    // Staff alert (within 30 seconds of start time)\n    else if (minutesUntil >= -0.5 && minutesUntil <= 0.5 && !staffAlerted) {\n      reminderType = \"staff\";\n      console.log(`   ✅ STAFF ALERT triggered`);\n    }\n\n    // Only output if reminder is needed\n    if (reminderType) {\n      results.push({\n        json: {\n          ...row,\n          reminderType,\n          minutesUntil: Math.round(minutesUntil * 10) / 10,\n          hoursUntil: Math.round(minutesUntil * 10) / 10, // For compatibility\n          formattedDate: appt.toLocaleDateString(\"en-US\", {\n            weekday: \"long\",\n            month: \"long\",\n            day: \"numeric\"\n          }),\n          formattedTime: appt.toLocaleTimeString(\"en-US\", {\n            hour: \"numeric\",\n            minute: \"2-digit\",\n            second: \"2-digit\", // Include seconds for testing\n            hour12: true\n          }),\n          appointmentDateTime: appt.toISOString()\n        }\n      });\n      processed++;\n    } else {\n      skipped++;\n    }\n\n  } catch (error) {\n    console.error(`❌ Error processing appointment:`, error.message);\n    errors++;\n  }\n}\n\nconsole.log(`\n🧪 TEST MODE - Reminder Processing Complete:\n  - Reminders to send: ${processed}\n  - Skipped: ${skipped} appointments\n  - Errors: ${errors}\n  - Total rows checked: ${$input.all().length}\n\n📝 Reminder Windows (TEST):\n  - 3-minute reminder: 2.5-3.5 min window (replaces 48hr)\n  - 2-minute reminder: 1.5-2.5 min window (replaces 24hr)\n  - 1-minute reminder: 0.5-1.5 min window (replaces 2hr)\n  - Staff alert: ±30 seconds window\n`);\n\nreturn results;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        416,
+        2352
+      ],
+      "id": "0f754cc1-ee20-42bf-9e76-b15fe45922ac",
+      "name": "Calculate Reminders"
+    }
+  ],
+  "connections": {
+    "2hr Auto-Cancel Email (Not Confirmed)": {
+      "main": [
+        [
+          {
+            "node": "Update Status to Cancelled",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "24hr Urgent Email (Not Confirmed)": {
+      "main": [
+        [
+          {
+            "node": "Update 24hr Flag",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "24hr Simple Reminder (Confirmed)": {
+      "main": [
+        [
+          {
+            "node": "Update 24hr Flag",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "2hr Final Reminder (Confirmed)": {
+      "main": [
+        [
+          {
+            "node": "Update 2hr Flag (Confirmed)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Staff Alert Email": {
+      "main": [
+        [
+          {
+            "node": "Update Staff Alert Flag",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check 2hr Status": {
+      "main": [
+        [
+          {
+            "node": "2hr Final Reminder (Confirmed)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "2hr Auto-Cancel Email (Not Confirmed)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check 24hr Status": {
+      "main": [
+        [
+          {
+            "node": "24hr Simple Reminder (Confirmed)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "24hr Urgent Email (Not Confirmed)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "48hr Reminder Email": {
+      "main": [
+        [
+          {
+            "node": "Update 48hr Flag",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route by Reminder Type": {
+      "main": [
+        [
+          {
+            "node": "48hr Reminder Email",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Check 24hr Status",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Check 2hr Status",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Staff Alert Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Appointments": {
+      "main": [
+        [
+          {
+            "node": "Calculate Reminders",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule Trigger (1 hour)": {
+      "main": [
+        [
+          {
+            "node": "Read Appointments",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculate Reminders": {
+      "main": [
+        [
+          {
+            "node": "Route by Reminder Type",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "7b3125be3eb2b56ab7606a684daa96104964f42d4c53676367f2a84787aca813"
+  }
+}

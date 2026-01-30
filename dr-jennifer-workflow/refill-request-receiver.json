@@ -1,0 +1,392 @@
+{
+  "name": "Dr. Jennifer - Refill Request Receiver (SMS Webhook)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "refill-sms",
+        "options": {}
+      },
+      "id": "webhook-trigger-refill",
+      "name": "Twilio SMS Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        240,
+        400
+      ],
+      "webhookId": "refill-sms-webhook",
+      "notes": "Receives SMS sent to dedicated refill phone number.\n\nTwilio webhook configuration:\nURL: https://izzydev.app.n8n.cloud/webhook/refill-sms\nMethod: POST"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract patient info and message from Twilio webhook\nconst twilioData = $input.first().json;\n\n// Twilio webhook provides:\n// - From: patient phone number\n// - Body: SMS message text\n// - To: refill line phone number\n\nconst patientPhone = twilioData.From || twilioData.from || '';\nconst messageText = twilioData.Body || twilioData.body || '';\nconst refillLineNumber = twilioData.To || twilioData.to || '';\nconst timestamp = new Date().toISOString();\n\n// Clean phone number to E.164 format\nlet cleanPhone = patientPhone.trim();\nif (!cleanPhone.startsWith('+')) {\n  cleanPhone = '+1' + cleanPhone.replace(/\\D/g, '');\n}\n\n// Clean message text\nconst cleanMessage = messageText.trim();\n\nreturn {\n  json: {\n    patientPhone: cleanPhone,\n    messageText: cleanMessage,\n    refillLineNumber: refillLineNumber,\n    requestTimestamp: timestamp,\n    messageSid: twilioData.MessageSid || '',\n    accountSid: twilioData.AccountSid || ''\n  }\n};"
+      },
+      "id": "extract-sms-data",
+      "name": "Extract SMS Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        460,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $env.GOOGLE_SHEET_ID }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Patients",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "matchingColumns": [],
+          "value": {}
+        },
+        "options": {
+          "useAppend": false
+        }
+      },
+      "id": "lookup-patient",
+      "name": "Lookup Patient by Phone",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.4,
+      "position": [
+        680,
+        400
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "google-sheets-credential",
+          "name": "Google Sheets Account"
+        }
+      },
+      "notes": "Searches Patients sheet for patient with matching phone number"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Find patient by phone number\nconst patientPhone = $('Extract SMS Data').first().json.patientPhone;\nconst allPatients = $input.all();\n\nlet matchedPatient = null;\n\nfor (const item of allPatients) {\n  const patient = item.json;\n  const sheetPhone = patient.Phone || patient.phone || '';\n  \n  // Clean sheet phone for comparison\n  let cleanSheetPhone = sheetPhone.trim();\n  if (!cleanSheetPhone.startsWith('+')) {\n    cleanSheetPhone = '+1' + cleanSheetPhone.replace(/\\D/g, '');\n  }\n  \n  if (cleanSheetPhone === patientPhone) {\n    matchedPatient = patient;\n    break;\n  }\n}\n\nif (!matchedPatient) {\n  // Patient not found\n  return {\n    json: {\n      patientFound: false,\n      patientPhone: patientPhone,\n      error: 'Patient not found in database'\n    }\n  };\n}\n\n// Patient found - extract key data\nreturn {\n  json: {\n    patientFound: true,\n    patientId: matchedPatient.Patient_ID || '',\n    patientName: matchedPatient.Patient_Name || matchedPatient.name || '',\n    patientPhone: patientPhone,\n    dateOfBirth: matchedPatient.Date_of_Birth || matchedPatient.dob || '',\n    primaryDoctor: matchedPatient.Primary_Doctor || matchedPatient.doctor || 'Dr. Smith',\n    lastVisitDate: matchedPatient.Last_Visit_Date || '',\n    allergies: matchedPatient.Allergies || '',\n    currentMedications: matchedPatient.Current_Medications || ''\n  }\n};"
+      },
+      "id": "find-patient-match",
+      "name": "Find Patient Match",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        900,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "patient-found-condition",
+              "leftValue": "={{ $json.patientFound }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-patient-found",
+      "name": "Patient Found?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.twilio.com/2010-04-01/Accounts/={{ $credentials.twilioApi.accountSid }}/Messages.json",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "twilioApi",
+        "sendBody": true,
+        "contentType": "form-urlencoded",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "From",
+              "value": "={{ $env.TWILIO_REFILL_LINE }}"
+            },
+            {
+              "name": "To",
+              "value": "={{ $('Extract SMS Data').first().json.patientPhone }}"
+            },
+            {
+              "name": "Body",
+              "value": "=We don't have your information on file. Please call our office at (555) 123-4567 to request a refill.\n\n- Dr. Jennifer's Practice"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "send-not-found-sms",
+      "name": "Send \"Not Found\" SMS",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1340,
+        600
+      ],
+      "credentials": {
+        "twilioApi": {
+          "id": "twilio-credential",
+          "name": "Twilio Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $env.GOOGLE_SHEET_ID }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Medications",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "matchingColumns": [],
+          "value": {}
+        },
+        "options": {
+          "useAppend": false
+        }
+      },
+      "id": "get-patient-medications",
+      "name": "Get Patient Medications",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.4,
+      "position": [
+        1340,
+        300
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "google-sheets-credential",
+          "name": "Google Sheets Account"
+        }
+      },
+      "notes": "Pulls all medications for this patient from Medications sheet"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Filter medications for this patient and build med list\nconst patientId = $('Find Patient Match').first().json.patientId;\nconst patientName = $('Find Patient Match').first().json.patientName;\nconst allMeds = $input.all();\n\nconst patientMeds = [];\n\nfor (const item of allMeds) {\n  const med = item.json;\n  \n  // Match by Patient_ID or Patient_Name\n  const medPatientId = med.Patient_ID || '';\n  const medPatientName = med.Patient_Name || '';\n  \n  if (medPatientId === patientId || medPatientName === patientName) {\n    patientMeds.push({\n      medicationName: med.Medication_Name || '',\n      dosage: med.Dosage || '',\n      frequency: med.Frequency || '',\n      prescribingDoctor: med.Prescribing_Doctor || '',\n      lastFilled: med.Last_Filled_Date || '',\n      refillsRemaining: med.Refills_Remaining || 0,\n      controlledSubstance: med.Controlled_Substance === 'Yes' || med.Controlled_Substance === true,\n      active: med.Status === 'Active' || med.active === true\n    });\n  }\n}\n\nif (patientMeds.length === 0) {\n  return {\n    json: {\n      hasMedications: false,\n      medicationCount: 0,\n      medications: [],\n      error: 'No active medications found for patient'\n    }\n  };\n}\n\nreturn {\n  json: {\n    hasMedications: true,\n    medicationCount: patientMeds.length,\n    medications: patientMeds\n  }\n};"
+      },
+      "id": "filter-patient-meds",
+      "name": "Filter Patient Medications",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1560,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Use Claude AI to match patient's request text to their medication list\n// This handles fuzzy matching like \"blood pressure medicine\" → \"Lisinopril\"\n\nconst messageText = $('Extract SMS Data').first().json.messageText;\nconst medications = $input.first().json.medications;\nconst patientName = $('Find Patient Match').first().json.patientName;\n\nif (!medications || medications.length === 0) {\n  return {\n    json: {\n      matched: false,\n      error: 'No medications available to match'\n    }\n  };\n}\n\n// Build medication list for AI prompt\nconst medList = medications.map((med, idx) => \n  `${idx + 1}. ${med.medicationName} ${med.dosage} - ${med.frequency}`\n).join('\\n');\n\n// Prepare for Claude AI node\nreturn {\n  json: {\n    patientName: patientName,\n    requestText: messageText,\n    medicationList: medList,\n    medications: medications,\n    // This will be sent to Claude AI in next node\n    promptForAI: `Patient ${patientName} sent this refill request: \"${messageText}\"\n\nTheir current medications are:\n${medList}\n\nWhich medication is the patient requesting? If the request is ambiguous or doesn't match any medication, indicate that.\n\nRespond in JSON format:\n{\n  \"matchedMedication\": \"exact medication name from list or null\",\n  \"confidence\": 0.0-1.0,\n  \"reasoning\": \"brief explanation\"\n}`\n  }\n};"
+      },
+      "id": "prepare-ai-match",
+      "name": "Prepare AI Medication Match",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1780,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": "={{ $env.REFILL_AI_TRIAGE_WORKFLOW_ID }}",
+        "options": {}
+      },
+      "id": "call-ai-triage",
+      "name": "Call AI Triage Workflow",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.1,
+      "position": [
+        2000,
+        300
+      ],
+      "notes": "Calls the refill-ai-triage workflow to analyze the request.\n\nPasses patient data + medication context for AI decision."
+    },
+    {
+      "parameters": {
+        "content": "## 💊 Refill Request Receiver Workflow\n\n**Purpose**: Receive SMS refill requests and identify patient + medication\n\n**Trigger**: Twilio SMS webhook (dedicated refill line)\n\n**Process**:\n1️⃣ Receive SMS from patient\n2️⃣ Extract phone number and message text\n3️⃣ Lookup patient in Google Sheet (Patients sheet)\n4️⃣ IF patient not found → Send error SMS\n5️⃣ IF patient found → Get their medication list (Medications sheet)\n6️⃣ Prepare AI medication match context\n7️⃣ Pass to AI Triage workflow (executeWorkflow)\n\n**Example Request**:\nPatient sends: \"I need a refill on my blood pressure medicine\"\n\n**AI Matching**:\nRequest: \"blood pressure medicine\"\nPatient meds: [Lisinopril 10mg, Metformin 500mg, Aspirin 81mg]\n→ AI will match: Lisinopril 10mg (blood pressure medication)\n\n**Next**: Routes to refill-ai-triage workflow",
+        "height": 521,
+        "width": 389,
+        "color": 4
+      },
+      "id": "sticky-note-receiver-info",
+      "name": "Workflow Info",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        240,
+        680
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 📞 Dedicated Refill Line\n\n**Setup**:\n1. Purchase separate Twilio phone number\n2. Configure webhook to this workflow\n3. Advertise number to patients:\n   - \"Text refills to: (555) 123-REFILL\"\n   - Include on pill bottles\n   - Patient portal\n   - Appointment reminders\n\n**Benefits**:\n- Separates refill traffic from main line\n- Easier to track/monitor\n- Can have different hours/rules\n- Dedicated metrics",
+        "height": 391,
+        "width": 389,
+        "color": 6
+      },
+      "id": "sticky-note-refill-line",
+      "name": "Refill Line Setup",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        660,
+        680
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 🔍 Patient Lookup Strategy\n\n**Primary Key**: Phone number (E.164 format)\n\n**Sheets Structure**:\n\n**Patients Sheet**:\n- Patient_ID (unique)\n- Patient_Name\n- Phone (E.164: +1XXXXXXXXXX)\n- Date_of_Birth\n- Primary_Doctor\n- Last_Visit_Date\n- Allergies\n- Current_Medications (comma-separated)\n\n**Medications Sheet**:\n- Medication_ID (unique)\n- Patient_ID (FK to Patients)\n- Medication_Name (e.g., \"Lisinopril\")\n- Dosage (e.g., \"10mg\")\n- Frequency (e.g., \"Once daily\")\n- Prescribing_Doctor\n- Last_Filled_Date\n- Refills_Remaining (number)\n- Controlled_Substance (Yes/No)\n- Status (Active/Inactive)",
+        "height": 521,
+        "width": 389,
+        "color": 5
+      },
+      "id": "sticky-note-sheets-structure",
+      "name": "Google Sheets Structure",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1080,
+        680
+      ]
+    }
+  ],
+  "connections": {
+    "Twilio SMS Webhook": {
+      "main": [
+        [
+          {
+            "node": "Extract SMS Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract SMS Data": {
+      "main": [
+        [
+          {
+            "node": "Lookup Patient by Phone",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lookup Patient by Phone": {
+      "main": [
+        [
+          {
+            "node": "Find Patient Match",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find Patient Match": {
+      "main": [
+        [
+          {
+            "node": "Patient Found?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Patient Found?": {
+      "main": [
+        [
+          {
+            "node": "Get Patient Medications",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send \"Not Found\" SMS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Patient Medications": {
+      "main": [
+        [
+          {
+            "node": "Filter Patient Medications",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Patient Medications": {
+      "main": [
+        [
+          {
+            "node": "Prepare AI Medication Match",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare AI Medication Match": {
+      "main": [
+        [
+          {
+            "node": "Call AI Triage Workflow",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 1,
+  "updatedAt": "2026-01-27T12:00:00.000Z",
+  "versionId": "1"
+}

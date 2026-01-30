@@ -1,0 +1,424 @@
+{
+  "name": "04 - Marketing Automation",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "marketing-trigger",
+        "options": {}
+      },
+      "id": "webhook-marketing",
+      "name": "Webhook - Marketing Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1.1,
+      "position": [250, 300],
+      "webhookId": "marketing-trigger"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 6
+            }
+          ]
+        }
+      },
+      "id": "schedule-engagement",
+      "name": "Schedule - Check Engagement",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [250, 500]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "event-type",
+              "leftValue": "={{ $json.eventType }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-event",
+      "name": "IF - Has Event Type",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [470, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "email-open",
+              "leftValue": "={{ $json.eventType }}",
+              "rightValue": "email_opened",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      },
+      "id": "switch-event",
+      "name": "Switch - Event Type",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [690, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Handle email open event\nconst event = $input.first().json;\n\nconst action = {\n  leadId: event.leadId || event.contactId,\n  email: event.email,\n  event: 'email_opened',\n  campaign: event.campaignId,\n  \n  // Scoring impact\n  scoreImpact: +5,\n  \n  // Next action\n  nextAction: {\n    type: 'wait_for_click',\n    delay: '24h',\n    fallback: 'send_followup'\n  },\n  \n  // Activity log\n  activity: {\n    type: 'engagement',\n    action: 'email_opened',\n    timestamp: new Date().toISOString(),\n    metadata: {\n      campaignId: event.campaignId,\n      emailId: event.emailId,\n      subject: event.subject\n    }\n  }\n};\n\nreturn action;"
+      },
+      "id": "process-open",
+      "name": "Code - Process Email Open",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [910, 100]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Handle link click event\nconst event = $input.first().json;\n\nconst action = {\n  leadId: event.leadId || event.contactId,\n  email: event.email,\n  event: 'link_clicked',\n  campaign: event.campaignId,\n  url: event.url,\n  \n  // Higher scoring impact for clicks\n  scoreImpact: +15,\n  \n  // Determine intent from URL\n  intent: (() => {\n    const url = (event.url || '').toLowerCase();\n    if (url.includes('pricing')) return 'high_intent';\n    if (url.includes('demo')) return 'high_intent';\n    if (url.includes('case-study')) return 'research';\n    if (url.includes('blog')) return 'education';\n    return 'general';\n  })(),\n  \n  // Activity log\n  activity: {\n    type: 'engagement',\n    action: 'link_clicked',\n    timestamp: new Date().toISOString(),\n    metadata: {\n      campaignId: event.campaignId,\n      url: event.url\n    }\n  }\n};\n\n// Trigger sales alert for high intent\naction.alertSales = action.intent === 'high_intent';\n\nreturn action;"
+      },
+      "id": "process-click",
+      "name": "Code - Process Link Click",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [910, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "http://api:3000/api/leads",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "status",
+              "value": "active"
+            },
+            {
+              "name": "limit",
+              "value": "100"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "fetch-for-reengagement",
+      "name": "HTTP - Fetch Leads for Re-engagement",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [470, 500]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Identify leads needing re-engagement\nconst response = $input.first().json;\nconst leads = response.data || [];\n\nconst now = new Date();\n\nconst needsReengagement = leads.filter(lead => {\n  const lastUpdate = new Date(lead.updatedAt);\n  const daysSinceUpdate = (now - lastUpdate) / (1000 * 60 * 60 * 24);\n  \n  // Re-engage if:\n  // - In nurture stage and no activity for 3+ days\n  // - Score between 40-69 and no activity for 5+ days\n  // - Was qualified but stalled for 7+ days\n  \n  if (lead.pipelineStage === 'lead' && lead.score >= 40 && lead.score < 70 && daysSinceUpdate >= 5) {\n    return true;\n  }\n  if (lead.qualificationStatus === 'nurture' && daysSinceUpdate >= 3) {\n    return true;\n  }\n  if (lead.pipelineStage === 'qualified' && daysSinceUpdate >= 7) {\n    return true;\n  }\n  return false;\n});\n\n// Categorize for different campaigns\nconst campaigns = {\n  warmNurture: needsReengagement.filter(l => l.score >= 50 && l.score < 70),\n  coldReactivation: needsReengagement.filter(l => l.score < 50),\n  stalledDeals: needsReengagement.filter(l => l.pipelineStage === 'qualified')\n};\n\nreturn {\n  totalLeads: leads.length,\n  needsReengagement: needsReengagement.length,\n  campaigns,\n  processedAt: now.toISOString()\n};"
+      },
+      "id": "identify-reengagement",
+      "name": "Code - Identify Re-engagement",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [690, 500]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "has-leads",
+              "leftValue": "={{ $json.needsReengagement }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-reengagement",
+      "name": "IF - Has Leads to Re-engage",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [910, 500]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Generate re-engagement campaign tasks\nconst data = $input.first().json;\n\nconst tasks = [];\n\n// Warm nurture campaign\nif (data.campaigns.warmNurture?.length > 0) {\n  tasks.push({\n    campaign: 'warm_nurture',\n    type: 'email_sequence',\n    leads: data.campaigns.warmNurture.length,\n    template: 'value_reminder',\n    priority: 'medium'\n  });\n}\n\n// Cold reactivation\nif (data.campaigns.coldReactivation?.length > 0) {\n  tasks.push({\n    campaign: 'cold_reactivation',\n    type: 'email_sequence',\n    leads: data.campaigns.coldReactivation.length,\n    template: 'reengagement_offer',\n    priority: 'low'\n  });\n}\n\n// Stalled deals - highest priority\nif (data.campaigns.stalledDeals?.length > 0) {\n  tasks.push({\n    campaign: 'stalled_deals',\n    type: 'personal_outreach',\n    leads: data.campaigns.stalledDeals.length,\n    template: 'sales_followup',\n    priority: 'high',\n    alertSales: true\n  });\n}\n\nreturn {\n  tasks,\n  totalTasks: tasks.length,\n  processedAt: new Date().toISOString()\n};"
+      },
+      "id": "create-campaigns",
+      "name": "Code - Create Campaign Tasks",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1130, 400]
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "status",
+              "value": "no_reengagement_needed"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "no-reengagement",
+      "name": "Set - No Re-engagement",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.3,
+      "position": [1130, 600]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "alert-sales",
+              "leftValue": "={{ $json.alertSales }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-sales-alert",
+      "name": "IF - Alert Sales",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1130, 200]
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "notification",
+              "value": "=High intent lead: {{ $json.email }} clicked {{ $json.url }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "sales-notification",
+      "name": "Set - Sales Notification",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.3,
+      "position": [1350, 100]
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "status",
+              "value": "event_processed"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "event-processed",
+      "name": "Set - Event Processed",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.3,
+      "position": [1350, 300]
+    }
+  ],
+  "connections": {
+    "Webhook - Marketing Trigger": {
+      "main": [
+        [
+          {
+            "node": "IF - Has Event Type",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule - Check Engagement": {
+      "main": [
+        [
+          {
+            "node": "HTTP - Fetch Leads for Re-engagement",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Has Event Type": {
+      "main": [
+        [
+          {
+            "node": "Switch - Event Type",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Switch - Event Type": {
+      "main": [
+        [
+          {
+            "node": "Code - Process Email Open",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Code - Process Link Click",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Process Email Open": {
+      "main": [
+        [
+          {
+            "node": "Set - Event Processed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Process Link Click": {
+      "main": [
+        [
+          {
+            "node": "IF - Alert Sales",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP - Fetch Leads for Re-engagement": {
+      "main": [
+        [
+          {
+            "node": "Code - Identify Re-engagement",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Identify Re-engagement": {
+      "main": [
+        [
+          {
+            "node": "IF - Has Leads to Re-engage",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Has Leads to Re-engage": {
+      "main": [
+        [
+          {
+            "node": "Code - Create Campaign Tasks",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Set - No Re-engagement",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Alert Sales": {
+      "main": [
+        [
+          {
+            "node": "Set - Sales Notification",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Set - Event Processed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": "06-error-monitoring"
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "name": "marketing",
+      "id": "7"
+    },
+    {
+      "name": "engagement",
+      "id": "8"
+    }
+  ],
+  "meta": {
+    "instanceId": "autoscale-crm-hub"
+  }
+}

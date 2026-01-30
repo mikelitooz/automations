@@ -1,0 +1,395 @@
+{
+  "name": "3. AI Lead Qualifier & Researcher",
+  "nodes": [
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "event": "rowUpdated",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "YOUR_GOOGLE_SHEET_ID"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "id",
+          "value": "Raw Leads"
+        }
+      },
+      "id": "sheets-trigger",
+      "name": "On Email Found",
+      "type": "n8n-nodes-base.googleSheetsTrigger",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json['Email Status'] }}",
+              "operation": "equals",
+              "value2": "Valid"
+            },
+            {
+              "value1": "={{ $json['Qualification Status'] }}",
+              "operation": "equals",
+              "value2": "Pending"
+            }
+          ]
+        }
+      },
+      "id": "filter-valid-email",
+      "name": "Filter: Valid Email + Pending",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "mode": "rules",
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "operator": {
+                      "type": "string",
+                      "operation": "notEmpty"
+                    },
+                    "leftValue": "={{ $json['Company Website'] }}"
+                  },
+                  {
+                    "operator": {
+                      "type": "string",
+                      "operation": "notEquals"
+                    },
+                    "leftValue": "={{ $json['Company Website'] }}",
+                    "rightValue": ""
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "Has Website"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra"
+        }
+      },
+      "id": "check-website",
+      "name": "Check Website Exists",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [680, 300],
+      "notes": "Routes leads to either website scraping path OR social media qualification path"
+    },
+    {
+      "parameters": {
+        "url": "={{ $json['Company Website'] }}",
+        "options": {
+          "redirect": {
+            "redirect": {
+              "followRedirects": true
+            }
+          },
+          "timeout": 15000
+        }
+      },
+      "id": "scrape-website",
+      "name": "Scrape Company Website",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [900, 200],
+      "notes": "Path A: For leads with company websites (LinkedIn, Apollo, Google Maps)"
+    },
+    {
+      "parameters": {
+        "input": "={{ $json.data }}"
+      },
+      "id": "html-to-markdown",
+      "name": "HTML to Markdown",
+      "type": "n8n-nodes-base.markdown",
+      "typeVersion": 1,
+      "position": [1120, 200]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Analyze this company for automation opportunities (targeting automation agency services):\n\n**Company Details:**\nCompany: {{ $json['Company Name'] }}\nWebsite: {{ $json['Company Website'] }}\nIndustry: {{ $json['Industry'] }}\nContact: {{ $json['Full Name'] }} ({{ $json['Job Title'] }})\nEmployee Count: {{ $json['Company Size'] }}\nLocation: {{ $json['Location'] }}\nSource: {{ $json['Source Platform'] }}\n\n**Website Content Analysis:**\n{{ $('HTML to Markdown').item.json.data }}\n\n**Evaluation Criteria:**\n\n1. **Manual Process Indicators** (Score: 0-3 points)\n   - Mentions hiring VAs, assistants, or administrative staff\n   - Repetitive tasks mentioned (data entry, scheduling, reporting)\n   - Growing team indicating need for process automation\n   - Signs: \"manual\", \"spreadsheets\", \"time-consuming\", \"repetitive\"\n\n2. **Scaling/Growth Stage** (Score: 0-3 points)\n   - Company is growing (hiring, expanding, raising funds)\n   - Multiple locations or teams\n   - Mentions growth challenges or operational bottlenecks\n   - Signs: \"growing\", \"scaling\", \"expanding\", \"Series A/B/C\"\n\n3. **Industry Fit for Automation** (Score: 0-3 points)\n   - HIGH FIT: SaaS, E-commerce, Digital Marketing, Real Estate, Healthcare, Consulting\n   - MEDIUM FIT: Professional Services, Education, Media\n   - LOW FIT: Manufacturing (physical), Retail (brick-and-mortar only)\n\n4. **Decision Maker Level** (Score: 0-1 point)\n   - C-level (CEO, COO, CTO, Founder) = 1 point (can make decisions fast)\n   - Manager/Director level = 0.5 points\n   - Individual contributor = 0 points\n\n**Scoring Guide (Total: 1-10):**\n- **9-10**: Perfect fit - SaaS/E-commerce scaling, clear manual processes, C-level contact\n- **7-8**: Good fit - Relevant industry, some pain points visible, manager+ level\n- **5-6**: Medium fit - Okay industry, unclear pain points, needs more research\n- **3-4**: Poor fit - Wrong industry or no clear automation needs\n- **1-2**: Very poor fit - Not a target customer\n\n**Return JSON with:**\n- `lead_score`: Number (1-10) based on criteria above\n- `qualification_status`: \"Qualified\" if score >= 7, else \"Rejected\"\n- `pain_points_identified`: Specific problems found on their website (quote actual text if possible)\n- `automation_opportunities`: 2-3 specific automation solutions we can offer them\n- `qualification_notes`: Detailed reasoning for score (mention specific evidence from website)"
+      },
+      "id": "ai-chain-website",
+      "name": "AI Qualification (Website)",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.4,
+      "position": [1340, 200],
+      "notes": "Path A: Deep qualification using scraped website content"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Analyze this lead for automation opportunities (targeting automation agency services):\n\n**Lead Details:**\nName: {{ $json['Full Name'] }}\nCompany: {{ $json['Company Name'] || 'Unknown' }}\nJob Title: {{ $json['Job Title'] || 'Unknown' }}\nIndustry: {{ $json['Industry'] }}\nLocation: {{ $json['Location'] }}\nSource Platform: {{ $json['Source Platform'] }}\nLinkedIn: {{ $json['LinkedIn URL'] || 'Not available' }}\n\n**Context:**\nThis lead was found on {{ $json['Source Platform'] }} (social media/community platform). They do NOT have a company website available, so qualification must be based on available profile data and context.\n\n**Social Media Lead Qualification Criteria:**\n\n1. **Job Title Analysis** (0-4 points)\n   - Founder/CEO/Owner = 4 points (decision maker, likely has business)\n   - Operations Manager/COO/Director = 3 points (involved in process improvement)\n   - Manager/Lead = 2 points (may influence decisions)\n   - Individual contributor/unclear = 1 point\n\n2. **Industry Fit** (0-3 points)\n   - HIGH FIT: SaaS, E-commerce, Digital Marketing, Real Estate, Consulting = 3 points\n   - MEDIUM FIT: Professional Services, Education, Healthcare = 2 points\n   - LOW FIT: Manufacturing, Retail, Unknown = 1 point\n\n3. **Platform Context** (0-3 points)\n   - **LinkedIn**: Professional context, likely B2B = 3 points\n   - **Reddit/Twitter**: Mentioned pain points or automation needs = 2-3 points\n   - **Reddit/Twitter**: Generic presence, no clear signals = 1 point\n   - **Google Maps**: Local business with contact info = 2 points\n\n**Scoring Guide (Total: 1-10):**\n- **8-10**: Strong fit - Senior decision maker + relevant industry + professional platform\n- **6-7**: Good fit - Manager level + decent industry + some context\n- **4-5**: Medium fit - Individual contributor or unclear role, but relevant industry\n- **1-3**: Poor fit - Wrong industry, junior role, or insufficient data\n\n**IMPORTANT**: Social media leads without websites should be scored MORE CONSERVATIVELY than leads with full company websites. Maximum realistic score: 8/10 (reserve 9-10 for leads with websites).\n\n**Automation Opportunities (Generic for Social Media Leads):**\nSince we lack specific company info, suggest COMMON automation opportunities:\n- Email/calendar management automation\n- Lead generation and outreach automation\n- Social media scheduling and engagement automation\n- Data entry and reporting automation\n- Customer support chatbot automation\n\n**Return JSON with:**\n- `lead_score`: Number (1-10) based on criteria above (max 8 for social leads)\n- `qualification_status`: \"Qualified\" if score >= 6, else \"Rejected\" (lower threshold than website leads)\n- `pain_points_identified`: \"Limited data - social media lead without website. General pain points assumed based on role and industry.\"\n- `automation_opportunities`: List 2-3 generic automation opportunities relevant to their job title/industry\n- `qualification_notes`: Explain scoring reasoning based on job title, industry, and platform context"
+      },
+      "id": "ai-chain-social",
+      "name": "AI Qualification (Social Media)",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.4,
+      "position": [900, 400],
+      "notes": "Path B: Simplified qualification for Reddit/Twitter/social leads without websites"
+    },
+    {
+      "parameters": {
+        "options": {
+          "temperature": 0.7
+        }
+      },
+      "id": "openai-model-website",
+      "name": "ChatGPT Model (Website)",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1,
+      "position": [1340, 60]
+    },
+    {
+      "parameters": {
+        "options": {
+          "temperature": 0.7
+        }
+      },
+      "id": "openai-model-social",
+      "name": "ChatGPT Model (Social)",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1,
+      "position": [900, 260]
+    },
+    {
+      "parameters": {
+        "jsonSchema": "={\n  \"type\": \"object\",\n  \"properties\": {\n    \"lead_score\": {\"type\": \"number\", \"minimum\": 1, \"maximum\": 10},\n    \"qualification_status\": {\"type\": \"string\", \"enum\": [\"Qualified\", \"Rejected\"]},\n    \"pain_points_identified\": {\"type\": \"string\"},\n    \"automation_opportunities\": {\"type\": \"string\"},\n    \"qualification_notes\": {\"type\": \"string\"}\n  },\n  \"required\": [\"lead_score\", \"qualification_status\", \"pain_points_identified\"]\n}"
+      },
+      "id": "output-parser-website",
+      "name": "Parse AI Output (Website)",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1,
+      "position": [1340, 320]
+    },
+    {
+      "parameters": {
+        "jsonSchema": "={\n  \"type\": \"object\",\n  \"properties\": {\n    \"lead_score\": {\"type\": \"number\", \"minimum\": 1, \"maximum\": 10},\n    \"qualification_status\": {\"type\": \"string\", \"enum\": [\"Qualified\", \"Rejected\"]},\n    \"pain_points_identified\": {\"type\": \"string\"},\n    \"automation_opportunities\": {\"type\": \"string\"},\n    \"qualification_notes\": {\"type\": \"string\"}\n  },\n  \"required\": [\"lead_score\", \"qualification_status\", \"pain_points_identified\"]\n}"
+      },
+      "id": "output-parser-social",
+      "name": "Parse AI Output (Social)",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1,
+      "position": [900, 520]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combinationMode": "mergeByPosition",
+        "options": {}
+      },
+      "id": "merge-paths",
+      "name": "Merge Qualification Paths",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [1560, 300],
+      "notes": "Combines results from both qualification paths (website + social media)"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "YOUR_GOOGLE_SHEET_ID"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "id",
+          "value": "Raw Leads"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Lead Score": "={{ $json.output.lead_score }}",
+            "Qualification Status": "={{ $json.output.qualification_status }}",
+            "Pain Points Identified": "={{ $json.output.pain_points_identified }}",
+            "Automation Opportunities": "={{ $json.output.automation_opportunities }}",
+            "Qualification Notes": "={{ $json.output.qualification_notes }}",
+            "Qualification Date": "={{ $now.toISO() }}"
+          },
+          "matchingColumns": ["Lead ID"]
+        },
+        "options": {}
+      },
+      "id": "update-sheets",
+      "name": "Update Lead Score",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [1780, 300]
+    }
+  ],
+  "connections": {
+    "On Email Found": {
+      "main": [
+        [
+          {
+            "node": "Filter: Valid Email + Pending",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter: Valid Email + Pending": {
+      "main": [
+        [
+          {
+            "node": "Check Website Exists",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Website Exists": {
+      "main": [
+        [
+          {
+            "node": "Scrape Company Website",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [],
+        [],
+        [
+          {
+            "node": "AI Qualification (Social Media)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Scrape Company Website": {
+      "main": [
+        [
+          {
+            "node": "HTML to Markdown",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTML to Markdown": {
+      "main": [
+        [
+          {
+            "node": "AI Qualification (Website)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ChatGPT Model (Website)": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Qualification (Website)",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ChatGPT Model (Social)": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Qualification (Social Media)",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse AI Output (Website)": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "AI Qualification (Website)",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse AI Output (Social)": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "AI Qualification (Social Media)",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Qualification (Website)": {
+      "main": [
+        [
+          {
+            "node": "Merge Qualification Paths",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Qualification (Social Media)": {
+      "main": [
+        [
+          {
+            "node": "Merge Qualification Paths",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge Qualification Paths": {
+      "main": [
+        [
+          {
+            "node": "Update Lead Score",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 0,
+  "updatedAt": "2025-01-04T00:00:00.000Z",
+  "versionId": "2"
+}

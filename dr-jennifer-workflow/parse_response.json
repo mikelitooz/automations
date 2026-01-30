@@ -1,0 +1,29 @@
+{
+  "nodes": [
+    {
+      "parameters": {
+        "jsCode": "/**\n * Unified Cal.com Webhook Parser\n * Handles BOOKING_CREATED, BOOKING_CANCELLED, BOOKING_RESCHEDULED\n * FIX: Uses iCalUID for consistent appointment tracking across reschedules/cancels\n */\n\nconst results = [];\n\nfor (const item of $input.all()) {\n  try {\n    const webhook = item.json;\n    \n    // Determine event type\n    const eventType = webhook.triggerEvent;\n    console.log(eventType)\n\n    \n    // Extract attendee info (patient)\n    const attendee = webhook.attendees && webhook.attendees[0] ? webhook.attendees[0] : {};\n    const patientEmail = attendee.email || \"\";\n    const patientName = attendee.name || \"\";\n    const patientPhone = attendee.phoneNumber || \"\";\n    \n    // Extract appointment details\n    const startTime = new Date(webhook.startTime);\n    \n    // Human-readable formats\n    const humanDate = startTime.toLocaleDateString('en-US', {\n      weekday: 'long',\n      month: 'long',\n      day: 'numeric',\n    });\n    const humanTime = startTime.toLocaleTimeString('en-US', {\n      hour: '2-digit',\n      minute: '2-digit',\n      hour12: true\n    });\n    \n    // ISO format for scheduling\n    const isoTimeFormat = webhook.startTime;\n    \n    // Extract doctor name from title/organizer\n    const doctorMatch = webhook.eventTitle?.match(/Dr\\.?\\s*\\w+/i);\n    const doctorName = doctorMatch ? doctorMatch[0].trim() : (webhook.organizer?.name || \"Dr. Jennifer\");\n    \n    // Appointment type\n    const appointmentType = webhook.userFieldsResponses?.appointmentType?.value || \n                           webhook.responses?.appointmentType?.value || \n                           webhook.description || \n                           \"Consultation\";\n    \n    // For reschedule: Get new time if available\n    let newDate = null;\n    let newTime = null;\n    let newIsoTime = null;\n    \n    if (eventType === \"BOOKING_RESCHEDULED\" && webhook.rescheduleEndTime) {\n      const newStartTime = new Date(webhook.rescheduleEndTime);\n      newDate = newStartTime.toLocaleDateString('en-US', {\n        weekday: 'long',\n        month: 'long',\n        day: 'numeric',\n      });\n      newTime = newStartTime.toLocaleTimeString('en-US', {\n        hour: '2-digit',\n        minute: '2-digit',\n        hour12: true\n      });\n      newIsoTime = webhook.rescheduleEndTime;\n    }\n    \n    console.log(`📅 ${eventType}: ${patientName} - ${humanDate} at ${humanTime}`);\n    \n    results.push({\n      json: {\n        // Event metadata\n        eventType: eventType,\n        bookingUid: webhook.uid,\n        appointmentUid: webhook.iCalUID || webhook.uid,\n        \n        // Patient info\n        patientEmail: patientEmail,\n        patientName: patientName,\n        patientPhone: patientPhone,\n        \n        // Appointment details (original/current)\n        appointmentDate: humanDate,\n        appointmentTime: humanTime,\n        isoTimeFormat: isoTimeFormat,\n        doctorName: doctorName,\n        appointmentType: appointmentType,\n        \n        // For reschedule: new appointment details\n        newDate: newDate,\n        newTime: newTime,\n        newIsoTime: newIsoTime,\n        \n        // Full webhook for reference\n        rawWebhook: webhook\n      }\n    });\n    \n  } catch (error) {\n    console.error(`❌ Error parsing Cal.com webhook:`, error.message);\n    results.push({\n      json: {\n        error: error.message,\n        rawData: item.json\n      }\n    });\n  }\n}\n\nreturn results;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -464,
+        592
+      ],
+      "id": "b350802a-1053-4bf8-9b57-cabed0816bac",
+      "name": "Parse Cal.com Webhook"
+    }
+  ],
+  "connections": {
+    "Parse Cal.com Webhook": {
+      "main": [
+        []
+      ]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "68978d4faed3a54d15dc491ac7bc3921e14fbabe15864d3e7ff129b93a7ede40"
+  }
+}

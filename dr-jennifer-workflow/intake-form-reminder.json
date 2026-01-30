@@ -1,0 +1,329 @@
+{
+  "name": "Dr. Jennifer - Intake Form Reminder (24hr Before Appointment)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 18 * * *"
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger-reminder",
+      "name": "Run Daily at 6 PM",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        240,
+        300
+      ],
+      "notes": "Runs every day at 6:00 PM to send reminders for tomorrow's appointments"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Calculate tomorrow's date for reminder filtering\nconst now = new Date();\n\n// Calculate tomorrow\nconst tomorrow = new Date(now);\ntomorrow.setDate(tomorrow.getDate() + 1);\n\n// Format date for Google Sheets (MM/DD/YYYY)\nconst formatDate = (date) => {\n  const month = String(date.getMonth() + 1).padStart(2, '0');\n  const day = String(date.getDate()).padStart(2, '0');\n  const year = date.getFullYear();\n  return `${month}/${day}/${year}`;\n};\n\nconst tomorrowDate = formatDate(tomorrow);\n\nreturn {\n  json: {\n    now: now.toISOString(),\n    tomorrow: tomorrow.toISOString(),\n    tomorrowDate: tomorrowDate,\n    reminderTime: '6:00 PM'\n  }\n};"
+      },
+      "id": "calculate-tomorrow",
+      "name": "Calculate Tomorrow's Date",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        460,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $env.GOOGLE_SHEET_ID }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Appointments",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "matchingColumns": [],
+          "value": {}
+        },
+        "options": {
+          "useAppend": false
+        }
+      },
+      "id": "get-tomorrow-appointments",
+      "name": "Get Tomorrow's Appointments",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.4,
+      "position": [
+        680,
+        300
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "google-sheets-credential",
+          "name": "Google Sheets Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Filter appointments that need form completion reminders\nconst appointments = $input.all();\nconst tomorrowDate = $('Calculate Tomorrow\\'s Date').first().json.tomorrowDate;\n\nconst needsReminder = [];\n\nfor (const item of appointments) {\n  const apt = item.json;\n  \n  // Skip if no date or status\n  if (!apt.Date || !apt.Status) continue;\n  \n  // Parse appointment date\n  const aptDate = apt.Date;\n  \n  // Check conditions for sending reminder:\n  // 1. Appointment is tomorrow\n  // 2. Status is SCHEDULED\n  // 3. Form link was sent (Form_Link_Sent = \"Yes\")\n  // 4. Form NOT completed (Form_Completed is not \"Yes\")\n  // 5. Patient has phone number\n  // 6. Reminder not already sent today (Reminder_Sent is not \"Yes\")\n  \n  const isTomorrow = aptDate === tomorrowDate;\n  const isScheduled = apt.Status === 'SCHEDULED';\n  const formSent = apt.Form_Link_Sent === 'Yes';\n  const formNotCompleted = apt.Form_Completed !== 'Yes';\n  const hasPhone = apt.Phone && apt.Phone.trim() !== '';\n  const reminderNotSent = apt.Reminder_Sent !== 'Yes';\n  \n  if (isTomorrow && isScheduled && formSent && formNotCompleted && hasPhone && reminderNotSent) {\n    // Get form link from sheet (saved when form was sent)\n    const formLink = apt.Form_Completion_Link || '';\n    \n    needsReminder.push({\n      json: {\n        ...apt,\n        formLink: formLink\n      }\n    });\n  }\n}\n\nif (needsReminder.length === 0) {\n  // No appointments need reminders\n  console.log('✅ No intake form reminders needed for tomorrow');\n  return [];\n}\n\nconsole.log(`📋 ${needsReminder.length} patients need intake form reminders for tomorrow`);\nreturn needsReminder;"
+      },
+      "id": "filter-needs-reminder",
+      "name": "Filter: Needs Reminder",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        900,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "has-reminders-condition",
+              "leftValue": "={{ $json.length }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-reminders-exist",
+      "name": "Any Reminders?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.twilio.com/2010-04-01/Accounts/={{ $credentials.twilioApi.accountSid }}/Messages.json",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "twilioApi",
+        "sendBody": true,
+        "contentType": "form-urlencoded",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "From",
+              "value": "={{ $env.TWILIO_PHONE_NUMBER }}"
+            },
+            {
+              "name": "To",
+              "value": "={{ $json.Phone }}"
+            },
+            {
+              "name": "Body",
+              "value": "=⏰ Reminder: Your appointment with Dr. Jennifer is TOMORROW at {{ $json.Time }}.\n\nPlease complete your intake form to save time at check-in:\n{{ $json.formLink }}\n\nIt only takes 5 minutes. Thank you!\n\n- Dr. Jennifer's Office"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "send-reminder-sms",
+      "name": "Send Reminder SMS",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1340,
+        200
+      ],
+      "credentials": {
+        "twilioApi": {
+          "id": "twilio-credential",
+          "name": "Twilio Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $env.GOOGLE_SHEET_ID }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Appointments",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Reminder_Sent": "Yes",
+            "Reminder_Sent_Date": "={{ new Date().toLocaleString('en-US', { timeZone: 'America/New_York' }) }}"
+          },
+          "matchingColumns": [
+            "Patient_Name",
+            "Date",
+            "Time"
+          ]
+        },
+        "options": {}
+      },
+      "id": "update-sheet-reminder",
+      "name": "Update Sheet: Reminder Sent",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.4,
+      "position": [
+        1560,
+        200
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "google-sheets-credential",
+          "name": "Google Sheets Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "## 🔔 Intake Form Reminder Workflow\n\n**Purpose**: Send reminders to patients who haven't completed their intake forms\n\n**Runs**: Daily at 6:00 PM\n\n**Process**:\n1️⃣ Calculate tomorrow's date\n2️⃣ Get all appointments for tomorrow\n3️⃣ Filter for incomplete forms:\n   - Form_Link_Sent = \"Yes\" (form was sent)\n   - Form_Completed ≠ \"Yes\" (not completed)\n   - Reminder_Sent ≠ \"Yes\" (reminder not sent today)\n   - Status = SCHEDULED\n4️⃣ Send reminder SMS with form link\n5️⃣ Update Google Sheet with Reminder_Sent flag\n\n**SMS Template**:\n\"⏰ Reminder: Your appointment with Dr. Jennifer is TOMORROW at [Time]. Please complete your intake form to save time at check-in: [URL]. It only takes 5 minutes. Thank you! - Dr. Jennifer's Office\"\n\n**Why 6 PM?**\nGives patients evening time to complete the form before their morning appointment.\n\n**Prevents Spam**:\nOnly sends ONE reminder per appointment (Reminder_Sent flag prevents duplicates)",
+        "height": 542,
+        "width": 389,
+        "color": 4
+      },
+      "id": "sticky-note-reminder-info",
+      "name": "Workflow Info",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        240,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 📊 Form Completion Tracking\n\n**Lifecycle States**:\n\n1️⃣ **Form Not Sent**\n   - Form_Link_Sent = blank or \"No\"\n   - Action: Workflow 1 will send form\n\n2️⃣ **Form Sent, Not Completed**\n   - Form_Link_Sent = \"Yes\"\n   - Form_Completed = \"No\" or blank\n   - Action: This workflow sends reminder\n\n3️⃣ **Reminder Sent**\n   - Reminder_Sent = \"Yes\"\n   - Form_Completed = \"No\" or blank\n   - Action: No further automated reminders\n\n4️⃣ **Form Completed**\n   - Form_Completed = \"Yes\"\n   - Athenahealth_Patient_ID = populated\n   - Action: No reminders needed\n\n**Staff Action Required**:\nIf patient arrives without completing form:\n- Have patient complete on tablet/phone in waiting room\n- OR manually enter data from paper form",
+        "height": 542,
+        "width": 389,
+        "color": 5
+      },
+      "id": "sticky-note-lifecycle",
+      "name": "Form Lifecycle",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        660,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 🎯 Optimization Tips\n\n**Adjust Reminder Timing**:\n- Current: 6:00 PM day before\n- Alternative: 8:00 AM day before (earlier notice)\n- Alternative: Multiple reminders (6 PM + 8 AM)\n\n**To change schedule**:\n1. Click \"Run Daily at 6 PM\" node\n2. Change Cron Expression:\n   - `0 18 * * *` = 6:00 PM\n   - `0 8 * * *` = 8:00 AM\n   - `0 20 * * *` = 8:00 PM\n\n**Multiple Reminders**:\nDuplicate this workflow and set different times. Update filter to check if previous reminder was sent >2 hours ago.\n\n**A/B Testing**:\nTrack completion rate with/without reminders in Google Sheet to measure effectiveness.",
+        "height": 542,
+        "width": 389,
+        "color": 6
+      },
+      "id": "sticky-note-optimization",
+      "name": "Optimization Tips",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1080,
+        480
+      ]
+    }
+  ],
+  "connections": {
+    "Run Daily at 6 PM": {
+      "main": [
+        [
+          {
+            "node": "Calculate Tomorrow's Date",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculate Tomorrow's Date": {
+      "main": [
+        [
+          {
+            "node": "Get Tomorrow's Appointments",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Tomorrow's Appointments": {
+      "main": [
+        [
+          {
+            "node": "Filter: Needs Reminder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter: Needs Reminder": {
+      "main": [
+        [
+          {
+            "node": "Any Reminders?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Any Reminders?": {
+      "main": [
+        [
+          {
+            "node": "Send Reminder SMS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Reminder SMS": {
+      "main": [
+        [
+          {
+            "node": "Update Sheet: Reminder Sent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 1,
+  "updatedAt": "2026-01-27T12:00:00.000Z",
+  "versionId": "1"
+}

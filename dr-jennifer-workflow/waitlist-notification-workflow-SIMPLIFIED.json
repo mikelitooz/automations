@@ -1,0 +1,260 @@
+{
+  "nodes": [
+    {
+      "parameters": {
+        "jsCode": "/**\n * Validate and deduplicate waitlist emails\n * Simple: all waitlist patients get notified\n */\n\nconst waitlistPatients = $input.all();\n\nconsole.log(`🔍 DEBUG: Received ${waitlistPatients.length} patients from Read Waitlist`);\n\nif (waitlistPatients.length === 0) {\n  console.log('ℹ️ No patients on waitlist');\n  return [];\n}\n\n// DEBUG: Log first patient structure to see column names\nif (waitlistPatients.length > 0) {\n  console.log('🔍 DEBUG: First patient data:', JSON.stringify(waitlistPatients[0].json, null, 2));\n}\n\nconst validated = [];\nconst emailSet = new Set(); // Deduplicate emails\n\nfor (const item of waitlistPatients) {\n  try {\n    const patient = item.json;\n    \n    // Try multiple possible email field names\n    const email = patient[\"Patient_Email\"] || \n                  patient[\"Email Address\"] || \n                  patient[\"Email\"] || \n                  patient[\"email\"] ||\n                  patient[\"patient_email\"];\n    \n    const name = patient[\"Patient_Name\"] || \n                 patient[\"Full_Name\"] || \n                 patient[\"Full Name\"] ||\n                 patient[\"Name\"] ||\n                 patient[\"name\"] ||\n                 \"Unknown\";\n    \n    console.log(`🔍 DEBUG: Processing patient: ${name}, email: ${email}`);\n    \n    // Skip if no email\n    if (!email) {\n      console.warn(`⚠️ Waitlist patient has no email: ${name}`);\n      continue;\n    }\n    \n    // Skip duplicates\n    if (emailSet.has(email)) {\n      console.log(`⚠️ Duplicate email skipped: ${email}`);\n      continue;\n    }\n    \n    validated.push(item);\n    emailSet.add(email);\n    console.log(`✅ Added ${name} (${email})`);\n    \n  } catch (error) {\n    console.error(`❌ Error processing waitlist patient:`, error.message);\n  }\n}\n\nconsole.log(`\n📊 Waitlist Summary:\n  - Total on waitlist: ${waitlistPatients.length}\n  - Valid unique emails: ${validated.length}\n`);\n\nreturn validated;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        240
+      ],
+      "id": "21104499-2c16-47f3-9751-b00342b9594e",
+      "name": "Validate & Deduplicate Emails"
+    },
+    {
+      "parameters": {
+        "content": "> 📢 **WAITLIST NOTIFICATION: WHEN SLOT OPENS VIA PATIENT CANCEL / RESCHEDULE APPOINTMENT**\n",
+        "height": 432,
+        "width": 1664,
+        "color": 2
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -48,
+        64
+      ],
+      "typeVersion": 1,
+      "id": "b77ca332-6148-4c46-89ba-d1563311e1f8",
+      "name": "Sticky Note4"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $input.all().length }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              },
+              "id": "296bed0c-42f2-4525-88b4-9db677bd919c"
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        704,
+        240
+      ],
+      "id": "a8fedf79-85f2-4035-8a4c-a1d7a4b23118",
+      "name": "Has Waitlist Patients?"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "waitlist-notification",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        32,
+        240
+      ],
+      "id": "04025df1-ba59-4b52-b10a-62e568351605",
+      "name": "Webhook Trigger",
+      "webhookId": "6451fa74-b291-49b0-8316-3204f1c27f6c"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1qwRj5vMXyrCiuAohIX-gcOmGK1M9Hc1BMLkK0vBE_3Y",
+          "mode": "list",
+          "cachedResultName": "Medical_Workflow"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1441703497,
+          "mode": "list",
+          "cachedResultName": "waitlist",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1qwRj5vMXyrCiuAohIX-gcOmGK1M9Hc1BMLkK0vBE_3Y/edit#gid=1441703497"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        256,
+        240
+      ],
+      "id": "20914213-0ae0-4e5c-9490-b192b27ed546",
+      "name": "Read Waitlist",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "cN7VVccmwTr9blH1",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "/**\n * Prepare mass email with Cal.com booking link\n * Format: https://cal.com/izzydevbuilds/appointment-with-dr.-jennifer?slot=2025-10-31T09:00:00.000Z\n */\n\nconst webhookData = $('Webhook Trigger').first().json.body;\nconst waitlistPatients = $input.all();\n\n// DEBUG: Log what we received from the webhook\nconsole.log('🔍 DEBUG: Webhook data received:', JSON.stringify(webhookData, null, 2));\n\n// Extract all emails for BCC (using correct field name from your Google Sheet)\nconst emails = waitlistPatients.map(p => p.json[\"Email Address\"]).filter(Boolean);\n\n// Parse date and time to ISO format\nconst dateStr = webhookData.appointmentDate; // \"2025-10-31\"\nconst timeStr = webhookData.appointmentTime; // \"3:45 PM\"\nconst doctorName = webhookData.doctorName;\nconst appointmentType = webhookData.appointmentType;\nconst reason = webhookData.reason || \"cancelled\";\n\nconsole.log(`🔍 DEBUG: Extracted values - Date: ${dateStr}, Time: ${timeStr}, Doctor: ${doctorName}, Type: ${appointmentType}`);\n\nconst reasonText = reason === \"rescheduled\" \n  ? \"has been RESCHEDULED and this slot\" \n  : \"has been CANCELLED and this slot\";\n\n// Convert to ISO format for Cal.com slot parameter\nlet slotISO = \"\";\ntry {\n  const dateTimeStr = `${dateStr} ${timeStr}`;\n  const dateObj = new Date(dateTimeStr);\n  slotISO = dateObj.toISOString(); // \"2025-10-31T15:45:00.000Z\"\n} catch (error) {\n  console.error(`Error parsing date/time: ${error.message}`);\n  slotISO = \"\"; // Fallback to no pre-fill\n}\n\n// Build Cal.com booking URL\nconst calcomBaseUrl = \"https://cal.com/izzydevbuilds/appointment-with-dr.-jennifer\";\nconst calcomBookingUrl = slotISO \n  ? `${calcomBaseUrl}?slot=${encodeURIComponent(slotISO)}`\n  : calcomBaseUrl; // Fallback to generic URL if parsing fails\n\nconsole.log(`📅 Cal.com booking URL: ${calcomBookingUrl}`);\n\nreturn [{\n  json: {\n    bccEmails: emails.join(\", \"),\n    slotDate: dateStr,\n    slotTime: timeStr,\n    slotDoctor: doctorName,\n    slotType: appointmentType,\n    reasonText: reasonText,\n    waitlistCount: emails.length,\n    calcomBookingUrl: calcomBookingUrl,\n    webhookData: webhookData\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        928,
+        144
+      ],
+      "id": "6c50fc5d-cfb9-408d-a5d6-946341deeb8d",
+      "name": "Prepare Cal.com Booking Link"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        928,
+        336
+      ],
+      "id": "ae94dfe9-f5e0-4573-a32b-842245adb785",
+      "name": "No Patients - End"
+    },
+    {
+      "parameters": {
+        "sendTo": "=apolloalpha57@gmail.com",
+        "subject": "=🚨 Appointment Slot Available - Book Now!",
+        "emailType": "text",
+        "message": "=Hi Waitlist Patients,\n\nAn appointment {{ $json.reasonText }} is now available!\n\n📅 {{ $json.slotDate }}\n⏰ {{ $json.slotTime }}\n👨‍⚕️ With {{ $json.slotDoctor }}\n📋 {{ $json.slotType }}\n\n⚡ FIRST TO BOOK GETS THE APPOINTMENT ⚡\n\nClick here to claim this slot:\n🔗 {{ $json.calcomBookingUrl }}\n\nThe link will take you directly to the booking page with this time pre-selected. Just fill in your details and confirm!\n\nNote: This is a time-sensitive notification. The slot may fill within minutes.\n\nGood luck!\nDr. Jennifer's Clinic",
+        "options": {},
+        "ccList": "",
+        "bccList": "={{ $json.bccEmails }}"
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        1152,
+        144
+      ],
+      "id": "af8386ce-92d0-4b46-b248-4e131c9a0cf8",
+      "name": "Mass Notification (BCC)",
+      "webhookId": "a60089a7-0341-41a6-927a-c65008bbe405",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "64z35ERC2QSGzngJ",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={ \"success\": true }",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1376,
+        144
+      ],
+      "id": "5757e68f-dc48-444b-81c4-b5cae09bdf31",
+      "name": "Webhook Response"
+    }
+  ],
+  "connections": {
+    "Validate & Deduplicate Emails": {
+      "main": [
+        [
+          {
+            "node": "Has Waitlist Patients?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Waitlist Patients?": {
+      "main": [
+        [
+          {
+            "node": "Prepare Cal.com Booking Link",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No Patients - End",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Read Waitlist",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Waitlist": {
+      "main": [
+        [
+          {
+            "node": "Validate & Deduplicate Emails",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Cal.com Booking Link": {
+      "main": [
+        [
+          {
+            "node": "Mass Notification (BCC)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mass Notification (BCC)": {
+      "main": [
+        [
+          {
+            "node": "Webhook Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "68978d4faed3a54d15dc491ac7bc3921e14fbabe15864d3e7ff129b93a7ede40"
+  }
+}

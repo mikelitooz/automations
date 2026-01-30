@@ -1,0 +1,184 @@
+{
+  "name": "05 - Customer Onboarding",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "new-customer",
+        "options": {}
+      },
+      "id": "webhook-new-customer",
+      "name": "Webhook - New Customer",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1.1,
+      "position": [250, 300],
+      "webhookId": "new-customer"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Initialize onboarding workflow for new customer\nconst customer = $input.first().json;\n\nconst onboarding = {\n  customerId: customer.id || customer.leadId,\n  email: customer.email,\n  name: `${customer.firstName || ''} ${customer.lastName || ''}`.trim(),\n  company: customer.company,\n  plan: customer.plan || 'standard',\n  \n  // Onboarding phases\n  phases: [\n    {\n      name: 'welcome',\n      status: 'pending',\n      tasks: [\n        { id: 'welcome_email', name: 'Send Welcome Email', status: 'pending' },\n        { id: 'account_setup', name: 'Create Account', status: 'pending' },\n        { id: 'assign_csm', name: 'Assign Success Manager', status: 'pending' }\n      ]\n    },\n    {\n      name: 'setup',\n      status: 'pending',\n      tasks: [\n        { id: 'kickoff_call', name: 'Schedule Kickoff Call', status: 'pending' },\n        { id: 'integration_guide', name: 'Send Integration Guide', status: 'pending' },\n        { id: 'api_credentials', name: 'Generate API Credentials', status: 'pending' }\n      ]\n    },\n    {\n      name: 'activation',\n      status: 'pending',\n      tasks: [\n        { id: 'first_integration', name: 'Complete First Integration', status: 'pending' },\n        { id: 'training_session', name: 'Conduct Training', status: 'pending' },\n        { id: 'success_check', name: '30-Day Success Check', status: 'pending' }\n      ]\n    }\n  ],\n  \n  // Onboarding metadata\n  createdAt: new Date().toISOString(),\n  targetCompletionDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),\n  status: 'initiated'\n};\n\nreturn onboarding;"
+      },
+      "id": "init-onboarding",
+      "name": "Code - Initialize Onboarding",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [470, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Generate welcome email content\nconst onboarding = $input.first().json;\n\nconst welcomeEmail = {\n  to: onboarding.email,\n  subject: `Welcome to AutoScale, ${onboarding.name || 'there'}! 🚀`,\n  template: 'welcome_customer',\n  variables: {\n    customerName: onboarding.name || 'Valued Customer',\n    company: onboarding.company,\n    plan: onboarding.plan,\n    csmName: 'Your Success Manager', // Would be assigned dynamically\n    loginUrl: 'https://app.autoscale.io/login',\n    onboardingGuideUrl: 'https://docs.autoscale.io/getting-started',\n    supportEmail: 'support@autoscale.io'\n  },\n  tracking: {\n    campaignId: `onboarding_${onboarding.customerId}`,\n    phase: 'welcome'\n  }\n};\n\n// Update task status\nonboarding.phases[0].tasks[0].status = 'completed';\nonboarding.phases[0].tasks[0].completedAt = new Date().toISOString();\n\nreturn { email: welcomeEmail, onboarding };"
+      },
+      "id": "welcome-email",
+      "name": "Code - Prepare Welcome Email",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [690, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Create internal tasks for the team\nconst data = $input.first().json;\nconst onboarding = data.onboarding;\n\nconst internalTasks = [\n  {\n    type: 'task',\n    title: `New Customer Onboarding: ${onboarding.company || onboarding.name}`,\n    description: `Setup and onboard new ${onboarding.plan} customer`,\n    assignTo: 'customer_success_team',\n    priority: 'high',\n    dueDate: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString(), // 2 days\n    subtasks: [\n      `Assign dedicated CSM`,\n      `Review customer profile and goals`,\n      `Schedule kickoff call`,\n      `Prepare custom onboarding plan`\n    ],\n    metadata: {\n      customerId: onboarding.customerId,\n      customerEmail: onboarding.email,\n      plan: onboarding.plan\n    }\n  },\n  {\n    type: 'task',\n    title: `Technical Setup: ${onboarding.company}`,\n    description: `Provision technical resources for new customer`,\n    assignTo: 'engineering_team',\n    priority: 'medium',\n    dueDate: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(), // 3 days\n    subtasks: [\n      `Create API credentials`,\n      `Setup sandbox environment`,\n      `Configure webhooks`\n    ],\n    metadata: {\n      customerId: onboarding.customerId\n    }\n  }\n];\n\nreturn { tasks: internalTasks, onboarding };"
+      },
+      "id": "create-tasks",
+      "name": "Code - Create Internal Tasks",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [910, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://api:3000/api/webhooks/crm-sync",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"action\": \"deal_stage_changed\",\n  \"entity\": \"deal\",\n  \"data\": {\n    \"leadId\": \"{{ $json.onboarding.customerId }}\",\n    \"newStage\": \"won\",\n    \"notes\": \"Customer onboarding initiated\"\n  }\n}",
+        "options": {}
+      },
+      "id": "update-crm",
+      "name": "HTTP - Update CRM Stage",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1130, 300],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Schedule follow-up reminders\nconst data = $('Code - Create Internal Tasks').first().json;\nconst onboarding = data.onboarding;\n\nconst reminders = [\n  {\n    type: 'reminder',\n    title: `Day 3 Check-in: ${onboarding.company}`,\n    scheduledFor: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(),\n    action: 'send_checkin_email',\n    template: 'onboarding_day3'\n  },\n  {\n    type: 'reminder',\n    title: `Week 1 Review: ${onboarding.company}`,\n    scheduledFor: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),\n    action: 'schedule_progress_call',\n    template: 'onboarding_week1'\n  },\n  {\n    type: 'reminder',\n    title: `30-Day Success Check: ${onboarding.company}`,\n    scheduledFor: onboarding.targetCompletionDate,\n    action: 'success_review',\n    template: 'onboarding_complete'\n  }\n];\n\nreturn {\n  reminders,\n  onboarding: {\n    ...onboarding,\n    status: 'in_progress',\n    phases: onboarding.phases.map((phase, i) => ({\n      ...phase,\n      status: i === 0 ? 'in_progress' : 'pending'\n    }))\n  }\n};"
+      },
+      "id": "schedule-reminders",
+      "name": "Code - Schedule Reminders",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1350, 300]
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "status",
+              "value": "onboarding_initiated"
+            },
+            {
+              "name": "message",
+              "value": "=Customer onboarding started for {{ $json.onboarding.company }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "success-response",
+      "name": "Set - Success Response",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.3,
+      "position": [1570, 300]
+    }
+  ],
+  "connections": {
+    "Webhook - New Customer": {
+      "main": [
+        [
+          {
+            "node": "Code - Initialize Onboarding",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Initialize Onboarding": {
+      "main": [
+        [
+          {
+            "node": "Code - Prepare Welcome Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Prepare Welcome Email": {
+      "main": [
+        [
+          {
+            "node": "Code - Create Internal Tasks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Create Internal Tasks": {
+      "main": [
+        [
+          {
+            "node": "HTTP - Update CRM Stage",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP - Update CRM Stage": {
+      "main": [
+        [
+          {
+            "node": "Code - Schedule Reminders",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Schedule Reminders": {
+      "main": [
+        [
+          {
+            "node": "Set - Success Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": "06-error-monitoring"
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "name": "onboarding",
+      "id": "9"
+    },
+    {
+      "name": "customer_success",
+      "id": "10"
+    }
+  ],
+  "meta": {
+    "instanceId": "autoscale-crm-hub"
+  }
+}

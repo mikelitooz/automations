@@ -1,0 +1,301 @@
+{
+  "name": "Dr. Jennifer - Lab Results AI Triage",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "workflow-trigger",
+      "name": "When Called by Another Workflow",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [
+        240,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $env.GOOGLE_SHEET_ID }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Lab_Reference_Ranges",
+          "mode": "name"
+        },
+        "options": {}
+      },
+      "id": "get-reference-ranges",
+      "name": "Get Lab Reference Ranges",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.4,
+      "position": [
+        460,
+        400
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "google-sheets-credential",
+          "name": "Google Sheets Account"
+        }
+      },
+      "notes": "Fetches normal ranges for all lab tests from Google Sheets\nUsed to determine if values are normal/abnormal/critical"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Prepare context for Claude AI analysis\nconst labData = $('When Called by Another Workflow').first().json;\nconst referenceRanges = $input.all();\n\n// Build reference ranges lookup\nconst rangesLookup = {};\nreferenceRanges.forEach(row => {\n  const data = row.json;\n  rangesLookup[data.Test_Name] = {\n    normalMin: parseFloat(data.Normal_Min) || null,\n    normalMax: parseFloat(data.Normal_Max) || null,\n    criticalLow: parseFloat(data.Critical_Low) || null,\n    criticalHigh: parseFloat(data.Critical_High) || null,\n    units: data.Units || '',\n    notes: data.Notes || ''\n  };\n});\n\n// Analyze each test result\nconst analysisResults = [];\nlet hasCritical = false;\nlet hasAbnormal = false;\n\nlabData.tests.forEach(test => {\n  const testName = test.testName;\n  const value = test.value;\n  const range = rangesLookup[testName];\n  \n  let status = 'UNKNOWN';\n  let interpretation = '';\n  \n  if (range) {\n    // Check for critical values\n    if (range.criticalLow !== null && value < range.criticalLow) {\n      status = 'CRITICAL_LOW';\n      interpretation = `CRITICAL: ${testName} is critically low (${value} ${range.units}, critical threshold <${range.criticalLow})`;\n      hasCritical = true;\n    } else if (range.criticalHigh !== null && value > range.criticalHigh) {\n      status = 'CRITICAL_HIGH';\n      interpretation = `CRITICAL: ${testName} is critically high (${value} ${range.units}, critical threshold >${range.criticalHigh})`;\n      hasCritical = true;\n    }\n    // Check for abnormal (out of normal range but not critical)\n    else if (range.normalMin !== null && value < range.normalMin) {\n      status = 'ABNORMAL_LOW';\n      interpretation = `${testName} is below normal range (${value} ${range.units}, normal ${range.normalMin}-${range.normalMax})`;\n      hasAbnormal = true;\n    } else if (range.normalMax !== null && value > range.normalMax) {\n      status = 'ABNORMAL_HIGH';\n      interpretation = `${testName} is above normal range (${value} ${range.units}, normal ${range.normalMin}-${range.normalMax})`;\n      hasAbnormal = true;\n    }\n    // Normal range\n    else {\n      status = 'NORMAL';\n      interpretation = `${testName} is within normal range (${value} ${range.units}, normal ${range.normalMin}-${range.normalMax})`;\n    }\n  } else {\n    // No reference range available\n    status = 'UNKNOWN';\n    interpretation = `${testName}: ${value} (no reference range available)`;\n  }\n  \n  analysisResults.push({\n    testName: testName,\n    value: value,\n    status: status,\n    interpretation: interpretation,\n    referenceRange: range\n  });\n});\n\n// Build summary for AI\nconst criticalTests = analysisResults.filter(t => t.status.startsWith('CRITICAL'));\nconst abnormalTests = analysisResults.filter(t => t.status.startsWith('ABNORMAL'));\nconst normalTests = analysisResults.filter(t => t.status === 'NORMAL');\n\nconst summary = {\n  totalTests: analysisResults.length,\n  normalCount: normalTests.length,\n  abnormalCount: abnormalTests.length,\n  criticalCount: criticalTests.length,\n  hasCritical: hasCritical,\n  hasAbnormal: hasAbnormal,\n  isAllNormal: !hasCritical && !hasAbnormal && analysisResults.length > 0\n};\n\nreturn {\n  json: {\n    patient: labData.patient,\n    labOrder: labData.labOrder,\n    tests: labData.tests,\n    \n    // Analysis results\n    analysisResults: analysisResults,\n    criticalTests: criticalTests,\n    abnormalTests: abnormalTests,\n    normalTests: normalTests,\n    summary: summary,\n    \n    // Pass through for AI\n    metadata: labData.metadata\n  }\n};"
+      },
+      "id": "analyze-test-values",
+      "name": "Analyze Test Values",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        680,
+        400
+      ],
+      "notes": "Compares each test value to normal/critical ranges\nCategories: NORMAL, ABNORMAL_LOW, ABNORMAL_HIGH, CRITICAL_LOW, CRITICAL_HIGH"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build comprehensive prompt for Claude AI\nconst data = $input.first().json;\n\nconst patient = data.patient;\nconst labOrder = data.labOrder;\nconst summary = data.summary;\nconst criticalTests = data.criticalTests;\nconst abnormalTests = data.abnormalTests;\nconst normalTests = data.normalTests;\n\n// Build system prompt with clinical protocols\nconst systemPrompt = `You are a medical lab result triage assistant for Dr. Jennifer's practice.\n\nYour role is to analyze lab results and categorize them for appropriate notification:\n\nCLINICAL PROTOCOLS:\n\n✅ NORMAL (70% of cases):\n- ALL test values within normal range\n- No critical values\n- No concerning patterns or combinations\n- Patient can be notified automatically\n\n⚠️ ABNORMAL (20% of cases):\n- ONE or more values outside normal range (but not critical)\n- Concerning combinations (e.g., high cholesterol + high LDL)\n- Requires doctor review before patient notification\n- Doctor may want to order follow-up tests or schedule appointment\n\n🚨 CRITICAL (10% of cases):\n- ONE or more values in critical range (life-threatening)\n- Immediate doctor intervention required\n- Examples: Glucose <50 or >400, Hemoglobin <7, Potassium >6.0, eGFR <15\n- DO NOT auto-notify patient - doctor/staff must call immediately\n\nRETURN FORMAT:\nRespond with ONLY valid JSON (no markdown, no explanations outside JSON):\n{\n  \"decision\": \"NORMAL\" | \"ABNORMAL\" | \"CRITICAL\",\n  \"reasoning\": \"Brief clinical reasoning (2-3 sentences)\",\n  \"concerningFindings\": [\"array of specific abnormal/critical values\"],\n  \"recommendedAction\": \"What should happen next\",\n  \"patientMessage\": \"Suggested message for patient (if NORMAL or ABNORMAL)\",\n  \"urgencyLevel\": \"routine\" | \"soon\" | \"urgent\" | \"immediate\"\n}`;\n\n// Build user prompt with lab results\nconst criticalList = criticalTests.map(t => t.interpretation).join('\\n');\nconst abnormalList = abnormalTests.map(t => t.interpretation).join('\\n');\nconst normalList = normalTests.map(t => t.interpretation).join('\\n');\n\nconst userPrompt = `PATIENT CONTEXT:\nName: ${patient.name}\nAge/DOB: ${patient.dateOfBirth || 'Unknown'}\nGender: ${patient.gender || 'Unknown'}\nPrimary Doctor: ${patient.primaryDoctor}\nLast Visit: ${patient.lastVisitDate || 'Unknown'}\n\nLAB ORDER:\nCollection Date: ${labOrder.collectionDate || 'Unknown'}\nOrdering Provider: ${labOrder.orderingProvider}\nLab Company: ${labOrder.labCompany}\n\nTEST RESULTS SUMMARY:\nTotal Tests: ${summary.totalTests}\nNormal: ${summary.normalCount}\nAbnormal: ${summary.abnormalCount}\nCritical: ${summary.criticalCount}\n\n${summary.criticalCount > 0 ? `🚨 CRITICAL VALUES (${summary.criticalCount}):\n${criticalList}\n` : ''}\n${summary.abnormalCount > 0 ? `⚠️ ABNORMAL VALUES (${summary.abnormalCount}):\n${abnormalList}\n` : ''}\n${summary.normalCount > 0 ? `✅ NORMAL VALUES (${summary.normalCount}):\n${normalList}\n` : ''}\n\nQUESTION: Based on the clinical protocols, should these lab results be categorized as NORMAL (auto-notify patient), ABNORMAL (doctor review required), or CRITICAL (immediate intervention)?`;\n\nreturn {\n  json: {\n    systemPrompt: systemPrompt,\n    userPrompt: userPrompt,\n    \n    // Pass through for next nodes\n    patientData: data\n  }\n};"
+      },
+      "id": "build-ai-prompt",
+      "name": "Build AI Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        900,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "model": "claude-3-5-sonnet-20241022",
+        "options": {
+          "temperature": 0.2,
+          "maxTokens": 1000
+        }
+      },
+      "id": "claude-ai-triage",
+      "name": "Claude AI: Triage Results",
+      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "typeVersion": 1,
+      "position": [
+        1120,
+        400
+      ],
+      "credentials": {
+        "anthropicApi": {
+          "id": "anthropic-api-credential",
+          "name": "Anthropic Claude API"
+        }
+      },
+      "notes": "Uses Claude AI to make final triage decision\nLow temperature (0.2) for consistent medical judgments"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse Claude's JSON response and validate\nconst aiResponse = $input.first().json;\nconst promptData = $('Build AI Prompt').first().json;\n\nlet decision = null;\nlet parseError = false;\n\n// Try to extract JSON from AI response\ntry {\n  let responseText = '';\n  \n  // Handle different response formats\n  if (typeof aiResponse === 'string') {\n    responseText = aiResponse;\n  } else if (aiResponse.response) {\n    responseText = aiResponse.response;\n  } else if (aiResponse.text) {\n    responseText = aiResponse.text;\n  } else if (aiResponse.output) {\n    responseText = aiResponse.output;\n  } else if (aiResponse.decision) {\n    decision = aiResponse;\n  } else {\n    responseText = JSON.stringify(aiResponse);\n  }\n  \n  if (!decision && responseText) {\n    // Remove markdown code blocks if present\n    responseText = responseText.replace(/```json\\n?/g, '').replace(/```\\n?/g, '').trim();\n    decision = JSON.parse(responseText);\n  }\n  \n  // Validate decision structure\n  if (!decision.decision || !['NORMAL', 'ABNORMAL', 'CRITICAL'].includes(decision.decision)) {\n    throw new Error('Invalid decision value');\n  }\n  \n} catch (error) {\n  console.error('Failed to parse AI response:', error.message);\n  parseError = true;\n  \n  // Safety fallback: If critical tests detected, escalate\n  const patientData = promptData.patientData;\n  if (patientData.summary.hasCritical) {\n    decision = {\n      decision: 'CRITICAL',\n      reasoning: `Parse error occurred, but critical values detected. Escalating for safety.`,\n      concerningFindings: patientData.criticalTests.map(t => t.interpretation),\n      recommendedAction: 'Immediate doctor review required due to critical lab values',\n      urgencyLevel: 'immediate'\n    };\n  } else if (patientData.summary.hasAbnormal) {\n    decision = {\n      decision: 'ABNORMAL',\n      reasoning: `Parse error occurred, but abnormal values detected. Escalating for safety.`,\n      concerningFindings: patientData.abnormalTests.map(t => t.interpretation),\n      recommendedAction: 'Doctor review required',\n      urgencyLevel: 'soon'\n    };\n  } else {\n    decision = {\n      decision: 'NORMAL',\n      reasoning: 'All values appear normal',\n      concerningFindings: [],\n      recommendedAction: 'Notify patient of normal results',\n      patientMessage: 'Your lab results are normal.',\n      urgencyLevel: 'routine'\n    };\n  }\n}\n\n// Add metadata\nconst output = {\n  // AI decision\n  decision: decision.decision,\n  reasoning: decision.reasoning || 'No reasoning provided',\n  concerningFindings: decision.concerningFindings || [],\n  recommendedAction: decision.recommendedAction || '',\n  patientMessage: decision.patientMessage || '',\n  urgencyLevel: decision.urgencyLevel || 'routine',\n  \n  // Metadata\n  parseError: parseError,\n  timestamp: new Date().toISOString(),\n  aiModel: 'claude-3-5-sonnet-20241022',\n  \n  // Original context (for notification workflow)\n  patientData: promptData.patientData,\n  \n  // For audit log\n  systemPrompt: promptData.systemPrompt,\n  userPrompt: promptData.userPrompt,\n  rawAIResponse: aiResponse\n};\n\nreturn { json: output };"
+      },
+      "id": "parse-ai-response",
+      "name": "Parse AI Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1340,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "return-decision",
+              "name": "decision",
+              "value": "={{ $json.decision }}",
+              "type": "string"
+            },
+            {
+              "id": "return-reasoning",
+              "name": "reasoning",
+              "value": "={{ $json.reasoning }}",
+              "type": "string"
+            },
+            {
+              "id": "return-findings",
+              "name": "concerningFindings",
+              "value": "={{ $json.concerningFindings }}",
+              "type": "array"
+            },
+            {
+              "id": "return-action",
+              "name": "recommendedAction",
+              "value": "={{ $json.recommendedAction }}",
+              "type": "string"
+            },
+            {
+              "id": "return-message",
+              "name": "patientMessage",
+              "value": "={{ $json.patientMessage }}",
+              "type": "string"
+            },
+            {
+              "id": "return-urgency",
+              "name": "urgencyLevel",
+              "value": "={{ $json.urgencyLevel }}",
+              "type": "string"
+            },
+            {
+              "id": "return-patient-data",
+              "name": "patientData",
+              "value": "={{ $json.patientData }}",
+              "type": "object"
+            },
+            {
+              "id": "return-timestamp",
+              "name": "timestamp",
+              "value": "={{ $json.timestamp }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "return-triage-decision",
+      "name": "Return Triage Decision",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1560,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 🧠 AI Triage Workflow\n\n**Purpose**: Analyze lab results using Claude AI to determine notification category\n\n**Called by**: Lab Results Receiver workflow\n\n**Process**:\n1️⃣ Receive patient + lab test data\n2️⃣ Fetch reference ranges from Google Sheets\n3️⃣ Analyze each test value:\n   - Compare to normal range\n   - Check for critical thresholds\n   - Identify concerning patterns\n4️⃣ Build AI prompt with clinical protocols\n5️⃣ Claude AI makes decision: NORMAL / ABNORMAL / CRITICAL\n6️⃣ Parse and validate AI response\n7️⃣ Return decision → Notifier workflow\n\n**AI Model**: Claude 3.5 Sonnet (temperature: 0.2 for consistency)\n\n**Safety**: If parse error occurs:\n- Critical values detected → CRITICAL\n- Abnormal values detected → ABNORMAL\n- All normal → NORMAL\n(Fail-safe: never auto-send critical results)",
+        "height": 542,
+        "width": 389,
+        "color": 4
+      },
+      "id": "sticky-note-workflow-info",
+      "name": "Workflow Info",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        240,
+        600
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 📊 Reference Ranges\n\n**Google Sheet**: Lab_Reference_Ranges\n\n**Columns**:\n- Test_Name (Glucose, Hemoglobin, etc.)\n- Normal_Min (lower bound)\n- Normal_Max (upper bound)\n- Critical_Low (life-threatening low)\n- Critical_High (life-threatening high)\n- Units (mg/dL, g/dL, etc.)\n- Notes (clinical context)\n\n**Examples**:\n- Glucose: 70-100 mg/dL (critical: <40 or >400)\n- Hemoglobin (M): 13.5-17.5 g/dL (critical: <7)\n- Potassium: 3.5-5.0 mEq/L (critical: <2.5 or >6.0)\n\n**Doctor can update**: Add new tests, adjust ranges based on practice standards",
+        "height": 542,
+        "width": 389,
+        "color": 5
+      },
+      "id": "sticky-note-reference-ranges",
+      "name": "Reference Ranges",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        660,
+        600
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 🎯 Triage Decision Logic\n\n**NORMAL (70%)**:\n✅ All values within normal range\n✅ No critical thresholds crossed\n✅ No concerning combinations\n→ Auto-notify patient immediately\n\n**ABNORMAL (20%)**:\n⚠️ 1+ values outside normal (but not critical)\n⚠️ Concerning combinations:\n  - High cholesterol + high LDL\n  - Low eGFR + high creatinine\n  - Abnormal A1C + high glucose\n→ Doctor review required before notification\n\n**CRITICAL (10%)**:\n🚨 1+ values in critical range\n🚨 Life-threatening:\n  - Glucose <50 or >400\n  - Hemoglobin <7\n  - Potassium >6.0 or <2.5\n  - eGFR <15 (kidney failure)\n→ Immediate doctor phone call + Slack alert\n→ DO NOT auto-send to patient",
+        "height": 542,
+        "width": 389,
+        "color": 6
+      },
+      "id": "sticky-note-decision-logic",
+      "name": "Decision Logic",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1080,
+        600
+      ]
+    }
+  ],
+  "connections": {
+    "When Called by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "Get Lab Reference Ranges",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Lab Reference Ranges": {
+      "main": [
+        [
+          {
+            "node": "Analyze Test Values",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Analyze Test Values": {
+      "main": [
+        [
+          {
+            "node": "Build AI Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build AI Prompt": {
+      "main": [
+        [
+          {
+            "node": "Claude AI: Triage Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claude AI: Triage Results": {
+      "main": [
+        [
+          {
+            "node": "Parse AI Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse AI Response": {
+      "main": [
+        [
+          {
+            "node": "Return Triage Decision",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 0,
+  "updatedAt": "2026-01-27T16:15:00.000Z",
+  "versionId": "1"
+}

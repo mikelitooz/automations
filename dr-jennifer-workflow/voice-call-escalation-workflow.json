@@ -1,0 +1,547 @@
+{
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 30
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        1040,
+        416
+      ],
+      "id": "e918543b-753f-416d-9c7a-f3f06e93893a",
+      "name": "Schedule Trigger (Every 30min)"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1qwRj5vMXyrCiuAohIX-gcOmGK1M9Hc1BMLkK0vBE_3Y",
+          "mode": "list",
+          "cachedResultName": "Medical_Workflow"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "appointment",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1qwRj5vMXyrCiuAohIX-gcOmGK1M9Hc1BMLkK0vBE_3Y/edit#gid=0"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1280,
+        416
+      ],
+      "id": "8c96b5d2-1136-4e50-bf80-533d23195737",
+      "name": "Read Appointments",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "cN7VVccmwTr9blH1",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "/**\n * Filter for appointments needing 20hr voice call escalation\n * \n * Criteria:\n * - 24hr_Reminder_Sent = TRUE (they got the 24hr reminder)\n * - Status = \"Pending\" (not confirmed yet)\n * - 20hr_Voice_Call_Made = FALSE or null (haven't called yet)\n * - Current time is 20 hours (±30 min) before appointment\n */\n\nconst now = new Date();\nconst appointments = $input.all();\nconst needsCalls = [];\n\nlet totalChecked = 0;\nlet needsCall = 0;\nlet skipped = 0;\n\nfor (const item of appointments) {\n  try {\n    const row = item.json;\n    totalChecked++;\n    \n    // Extract fields\n    const isoTime = row[\"ISO_Time_Format\"];\n    const status = (row[\"Status\"] || \"Pending\").toString();\n    const sent24hr = row[\"24hr_Reminder_Sent\"] === true || row[\"24hr_Reminder_Sent\"] === \"TRUE\";\n    const voiceCallMade = row[\"20hr_Voice_Call_Made\"] === true || row[\"20hr_Voice_Call_Made\"] === \"TRUE\";\n    const patientPhone = row[\"Patient_Phone\"];\n    const patientName = row[\"Patient_Name\"];\n    const patientEmail = row[\"Patient_Email\"];\n    \n    // Validate required fields\n    if (!isoTime || !patientPhone || !patientName) {\n      skipped++;\n      continue;\n    }\n    \n    // Parse appointment time\n    const apptTime = new Date(isoTime);\n    if (isNaN(apptTime.getTime())) {\n      console.error(`❌ Invalid ISO_Time_Format: ${isoTime}`);\n      skipped++;\n      continue;\n    }\n    \n    // Calculate hours until appointment\n    const hoursUntil = (apptTime - now) / 36e5; // milliseconds to hours\n    \n    // Check if appointment needs voice call\n    // Production: 19.5 to 20.5 hours before appointment (30-min window)\n    // Testing: 1.25 to 1.75 minutes before appointment (0.5-min window)\n    const shouldCall = (\n      sent24hr === true &&\n      status === \"Pending\" &&\n      voiceCallMade !== true &&\n      hoursUntil >= 19.5 &&\n      hoursUntil <= 20.5\n    );\n    \n    if (shouldCall) {\n      needsCalls.push({\n        json: {\n          ...row,\n          hoursUntil: Math.round(hoursUntil * 10) / 10,\n          formattedDate: apptTime.toLocaleDateString(\"en-US\", {\n            weekday: \"long\",\n            month: \"long\",\n            day: \"numeric\"\n          }),\n          formattedTime: apptTime.toLocaleTimeString(\"en-US\", {\n            hour: \"numeric\",\n            minute: \"2-digit\",\n            hour12: true\n          }),\n          appointmentDateTime: apptTime.toISOString()\n        }\n      });\n      needsCall++;\n    } else {\n      skipped++;\n    }\n    \n  } catch (error) {\n    console.error(`❌ Error filtering appointment:`, error.message);\n    skipped++;\n  }\n}\n\nconsole.log(`\n📞 Voice Call Escalation Filter:\n  - Total appointments checked: ${totalChecked}\n  - Need voice calls: ${needsCall}\n  - Skipped: ${skipped}\n`);\n\nreturn needsCalls;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1520,
+        416
+      ],
+      "id": "2e34106b-096c-4de8-b026-a9bb7ae7e46f",
+      "name": "Filter for 20hr Unconfirmed"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "leftValue": "={{ $input.all().length }}",
+              "rightValue": "0",
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1760,
+        416
+      ],
+      "id": "dd145152-fd59-438e-a265-9f8bf0309d5f",
+      "name": "Any Calls Needed?"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        2000,
+        320
+      ],
+      "id": "64994fd6-ce56-4f61-a018-05dd5a32aaba",
+      "name": "Loop: Each Patient"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.vapi.ai/call",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"phoneNumberId\": \"{{ $env.VAPI_PHONE_NUMBER_ID }}\",\n  \"customer\": {\n    \"number\": \"{{ $json.Patient_Phone }}\",\n    \"name\": \"{{ $json.Patient_Name }}\",\n    \"extension\": {\n      \"appointmentUid\": \"{{ $json.Appointment_Uid }}\",\n      \"isoTimeFormat\": \"{{ $json.ISO_Time_Format }}\",\n      \"patientEmail\": \"{{ $json.Patient_Email }}\"\n    }\n  },\n  \"assistant\": {\n    \"name\": \"Dr. Jennifer Appointment Confirmation Assistant\",\n    \"model\": {\n      \"provider\": \"anthropic\",\n      \"model\": \"claude-3-5-sonnet-20241022\",\n      \"messages\": [\n        {\n          \"role\": \"system\",\n          \"content\": \"You are a friendly and professional medical office assistant calling from Dr. Jennifer's office. The patient's name is {{ $json.Patient_Name }} and they have an appointment on {{ $json.formattedDate }} at {{ $json.formattedTime }}. Your goal is to:\\n\\n1. Confirm if they will attend this appointment\\n2. If they need to cancel, acknowledge it professionally and let them know they'll receive a cancellation confirmation\\n3. If they need to reschedule, acknowledge it and let them know they'll receive a rescheduling link by email\\n4. Keep the conversation brief and professional (under 2 minutes)\\n5. Be empathetic, warm, and understanding\\n\\nIMPORTANT:\\n- If you reach voicemail, leave a brief message asking them to call back\\n- Always confirm the appointment details when the patient answers\\n- End the call politely once you have their response\"\n        }\n      ],\n      \"temperature\": 0.7\n    },\n    \"voice\": {\n      \"provider\": \"11labs\",\n      \"voiceId\": \"rachel\"\n    },\n    \"firstMessage\": \"Hi {{ $json.Patient_Name }}, this is Dr. Jennifer's office calling about your appointment on {{ $json.formattedDate }} at {{ $json.formattedTime }}. We noticed you haven't confirmed yet. Are you still able to make it?\",\n    \"endCallPhrases\": [\n      \"goodbye\",\n      \"thank you\",\n      \"have a great day\",\n      \"take care\"\n    ],\n    \"recordingEnabled\": true,\n    \"voicemailDetection\": {\n      \"provider\": \"vapi\",\n      \"enabled\": true\n    },\n    \"analysisPlan\": {\n      \"summaryPrompt\": \"Summarize this appointment confirmation call in 1-2 sentences, focusing on the patient's response and the outcome.\",\n      \"structuredDataPrompt\": \"Extract the call outcome and patient's intent from this appointment confirmation conversation. Determine if they confirmed attendance, requested cancellation, requested reschedule, or if the call was unanswered (voicemail/no pickup).\",\n      \"structuredDataSchema\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"outcome\": {\n            \"type\": \"string\",\n            \"enum\": [\n              \"confirmed\",\n              \"cancel\",\n              \"reschedule\",\n              \"unanswered\"\n            ],\n            \"description\": \"The final outcome of the call: confirmed (patient confirmed attendance), cancel (patient wants to cancel), reschedule (patient wants to reschedule), unanswered (voicemail/no answer/no pickup)\"\n          },\n          \"patientResponse\": {\n            \"type\": \"string\",\n            \"description\": \"Brief description of what the patient said or what happened (e.g., 'Patient confirmed they will attend', 'Voicemail - left message', 'Patient needs to reschedule due to conflict')\"\n          },\n          \"needsFollowup\": {\n            \"type\": \"boolean\",\n            \"description\": \"Whether this patient needs additional follow-up contact from staff\"\n          },\n          \"appointmentConfirmed\": {\n            \"type\": \"boolean\",\n            \"description\": \"True if patient explicitly confirmed they will attend\"\n          }\n        },\n        \"required\": [\n          \"outcome\",\n          \"patientResponse\",\n          \"needsFollowup\",\n          \"appointmentConfirmed\"\n        ]\n      }\n    }\n  },\n  \"serverUrl\": \"{{ $env.N8N_WEBHOOK_URL }}/webhook/vapi-results\"\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2240,
+        320
+      ],
+      "id": "5697145e-4f69-4103-942e-f6f75142e0f1",
+      "name": "Initiate Vapi Call",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "vapi_api_key",
+          "name": "Vapi API Key"
+        }
+      },
+      "notes": "Vapi.ai API call with inline assistant configuration and structured outcome detection"
+    },
+    {
+      "parameters": {
+        "jsCode": "/**\n * Extract Call ID and prepare for tracking\n * Vapi returns: { id: \"call_abc123\", status: \"queued\" }\n */\n\nconst vapiResponse = $input.first().json;\nconst appointmentData = $('Loop: Each Patient').first().json;\n\nreturn [{\n  json: {\n    // Vapi call data\n    callId: vapiResponse.id,\n    callStatus: vapiResponse.status,\n    \n    // Appointment data for later update\n    Appointment_Uid: appointmentData.Appointment_Uid,\n    Patient_Name: appointmentData.Patient_Name,\n    Patient_Phone: appointmentData.Patient_Phone,\n    Patient_Email: appointmentData.Patient_Email,\n    Date: appointmentData.Date,\n    Time: appointmentData.Time,\n    formattedDate: appointmentData.formattedDate,\n    formattedTime: appointmentData.formattedTime,\n    \n    // Timestamp\n    callInitiatedAt: new Date().toISOString()\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2480,
+        320
+      ],
+      "id": "a27293c3-bb59-4dc6-8a0a-664a6445df59",
+      "name": "Extract Call ID"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "1qwRj5vMXyrCiuAohIX-gcOmGK1M9Hc1BMLkK0vBE_3Y",
+          "mode": "list",
+          "cachedResultName": "Medical_Workflow"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "appointment",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1qwRj5vMXyrCiuAohIX-gcOmGK1M9Hc1BMLkK0vBE_3Y/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "20hr_Voice_Call_Made": "=TRUE",
+            "row_number": 0
+          },
+          "matchingColumns": [
+            "Appointment_Uid"
+          ],
+          "schema": [
+            {
+              "id": "Appointment_Uid",
+              "displayName": "Appointment_Uid",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Date",
+              "displayName": "Date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Time",
+              "displayName": "Time",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Patient_Name",
+              "displayName": "Patient_Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Patient_Phone",
+              "displayName": "Patient_Phone",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Patient_Email",
+              "displayName": "Patient_Email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Doctor_Name",
+              "displayName": "Doctor_Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Appointment_Type",
+              "displayName": "Appointment_Type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Status",
+              "displayName": "Status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "48hr_Reminder_Sent",
+              "displayName": "48hr_Reminder_Sent",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "24hr_Reminder_Sent",
+              "displayName": "24hr_Reminder_Sent",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "2hr_Reminder_Sent",
+              "displayName": "2hr_Reminder_Sent",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Confirmed_At",
+              "displayName": "Confirmed_At",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Confirmed_Via",
+              "displayName": "Confirmed_Via",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Cancelled_At",
+              "displayName": "Cancelled_At",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Cancelled_Via",
+              "displayName": "Cancelled_Via",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Cancellation_Reason",
+              "displayName": "Cancellation_Reason",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Rescheduled_At",
+              "displayName": "Rescheduled_At",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Rescheduled_Via",
+              "displayName": "Rescheduled_Via",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Staff_Alerted",
+              "displayName": "Staff_Alerted",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "ISO_Time_Format",
+              "displayName": "ISO_Time_Format",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "20hr_Voice_Call_Made",
+              "displayName": "20hr_Voice_Call_Made",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Voice_Call_Agent_Call_Summary",
+              "displayName": "Voice_Call_Agent_Call_Summary",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Voice_Call_Agent_Action_Taken",
+              "displayName": "Voice_Call_Agent_Action_Taken",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "row_number",
+              "displayName": "row_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "readOnly": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        2720,
+        320
+      ],
+      "id": "be6293ae-d7a5-4f56-8392-254e2ee73d06",
+      "name": "Mark Call Initiated",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "cN7VVccmwTr9blH1",
+          "name": "Google Sheets account"
+        }
+      },
+      "notes": "Prevent duplicate calls"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        2000,
+        528
+      ],
+      "id": "eb6b872a-10d0-425d-b417-623933dce12f",
+      "name": "No Calls Needed - End"
+    }
+  ],
+  "connections": {
+    "Schedule Trigger (Every 30min)": {
+      "main": [
+        [
+          {
+            "node": "Read Appointments",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Appointments": {
+      "main": [
+        [
+          {
+            "node": "Filter for 20hr Unconfirmed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter for 20hr Unconfirmed": {
+      "main": [
+        [
+          {
+            "node": "Any Calls Needed?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Any Calls Needed?": {
+      "main": [
+        [
+          {
+            "node": "Loop: Each Patient",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No Calls Needed - End",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop: Each Patient": {
+      "main": [
+        [
+          {
+            "node": "Initiate Vapi Call",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Initiate Vapi Call": {
+      "main": [
+        [
+          {
+            "node": "Extract Call ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Call ID": {
+      "main": [
+        [
+          {
+            "node": "Mark Call Initiated",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "68978d4faed3a54d15dc491ac7bc3921e14fbabe15864d3e7ff129b93a7ede40"
+  }
+}

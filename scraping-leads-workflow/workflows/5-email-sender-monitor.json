@@ -1,0 +1,258 @@
+{
+  "name": "5. Email Sender & Reply Monitor",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 1,
+              "triggerAtHour": 9,
+              "triggerAtMinute": 0
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Hourly 9AM-5PM",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "YOUR_GOOGLE_SHEET_ID"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "id",
+          "value": "Raw Leads"
+        },
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "Email Status",
+              "lookupValue": "Ready"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "get-ready-leads",
+      "name": "Get Ready Leads",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "maxItems": 10
+      },
+      "id": "limit-node",
+      "name": "Limit 10 per Hour",
+      "type": "n8n-nodes-base.limit",
+      "typeVersion": 1,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json['Email Address'] }}",
+        "subject": "={{ $json['Email Subject'] }}",
+        "emailType": "text",
+        "message": "={{ $json['Email Body'] }}\n\n---\nThis is a business inquiry. Reply \"stop\" to unsubscribe.\n\nIzzy Dev\nAutomation Agency\n1234 Main Street, Suite 100\nLos Angeles, CA 90001\n\nUnsubscribe: https://your-n8n-instance.com/webhook/unsubscribe?email={{ $json['Email Address'] }}",
+        "options": {
+          "senderName": "Izzy from Automation Agency"
+        }
+      },
+      "id": "send-email",
+      "name": "Send via Gmail",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "amount": 6,
+        "unit": "minutes"
+      },
+      "id": "wait-node",
+      "name": "Wait 6 min (Rate Limit)",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "YOUR_GOOGLE_SHEET_ID"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "id",
+          "value": "Raw Leads"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Email Status": "Sent",
+            "Sent Date": "={{ $now.toISO() }}",
+            "Last Contact Date": "={{ $now.toISO() }}",
+            "Opens Count": "0",
+            "Clicks Count": "0",
+            "Reply Status": "No Reply",
+            "Follow-Up Count": "0"
+          },
+          "matchingColumns": ["Lead ID"]
+        },
+        "options": {}
+      },
+      "id": "update-sent-status",
+      "name": "Update: Sent",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [1340, 300]
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "select": "user",
+        "user": {
+          "__rl": true,
+          "mode": "list",
+          "value": "me"
+        },
+        "filters": {
+          "labelIds": [],
+          "q": "is:unread from:*"
+        },
+        "options": {}
+      },
+      "id": "check-replies",
+      "name": "Check Gmail for Replies",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [240, 520]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "YOUR_GOOGLE_SHEET_ID"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "id",
+          "value": "Raw Leads"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Reply Status": "Replied",
+            "Reply Date": "={{ $now.toISO() }}",
+            "Reply Content": "={{ $json.snippet }}",
+            "Follow-Up Status": "Stopped"
+          },
+          "matchingColumns": ["Email Address"]
+        },
+        "options": {}
+      },
+      "id": "update-reply-status",
+      "name": "Update: Replied",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [460, 520]
+    }
+  ],
+  "connections": {
+    "Hourly 9AM-5PM": {
+      "main": [
+        [
+          {
+            "node": "Get Ready Leads",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Check Gmail for Replies",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Ready Leads": {
+      "main": [
+        [
+          {
+            "node": "Limit 10 per Hour",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Limit 10 per Hour": {
+      "main": [
+        [
+          {
+            "node": "Send via Gmail",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send via Gmail": {
+      "main": [
+        [
+          {
+            "node": "Wait 6 min (Rate Limit)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait 6 min (Rate Limit)": {
+      "main": [
+        [
+          {
+            "node": "Update: Sent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Gmail for Replies": {
+      "main": [
+        [
+          {
+            "node": "Update: Replied",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 0,
+  "updatedAt": "2025-01-04T00:00:00.000Z",
+  "versionId": "1"
+}

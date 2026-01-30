@@ -1,0 +1,355 @@
+{
+  "name": "02 - AI Lead Qualification",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ai-qualify",
+        "options": {
+          "responseMode": "lastNode"
+        }
+      },
+      "id": "webhook-qualify",
+      "name": "Webhook - Qualification Request",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1.1,
+      "position": [250, 300],
+      "webhookId": "ai-qualify"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Prepare lead data for AI analysis\nconst lead = $input.first().json;\n\n// Build comprehensive lead profile for AI\nconst profile = {\n  leadId: lead.id,\n  email: lead.email,\n  name: `${lead.firstName || ''} ${lead.lastName || ''}`.trim(),\n  company: lead.company,\n  \n  // Analyze email domain\n  emailAnalysis: {\n    domain: lead.email?.split('@')[1] || '',\n    isBusinessEmail: !['gmail.com', 'yahoo.com', 'hotmail.com', 'outlook.com', 'aol.com'].includes(lead.email?.split('@')[1]?.toLowerCase()),\n    isCorporate: lead.email?.includes(lead.company?.toLowerCase().replace(/[^a-z]/g, '')) || false\n  },\n  \n  // Source & intent signals\n  sourceSignals: {\n    source: lead.source,\n    isHighIntent: ['demo_request', 'pricing_page', 'contact_sales'].includes(lead.source),\n    isOrganic: ['organic', 'direct', 'referral'].includes(lead.source)\n  },\n  \n  // Data completeness score\n  completeness: {\n    hasFirstName: !!lead.firstName,\n    hasLastName: !!lead.lastName,\n    hasCompany: !!lead.company,\n    hasPhone: !!lead.phone,\n    score: [lead.firstName, lead.lastName, lead.company, lead.phone].filter(Boolean).length / 4\n  },\n  \n  // Timestamp analysis\n  timing: {\n    capturedAt: lead.capturedAt,\n    dayOfWeek: new Date(lead.capturedAt).toLocaleString('en-US', { weekday: 'long' }),\n    isBusinessHours: (() => {\n      const hour = new Date(lead.capturedAt).getHours();\n      return hour >= 9 && hour <= 17;\n    })()\n  },\n  \n  rawLead: lead\n};\n\nreturn profile;"
+      },
+      "id": "prepare-profile",
+      "name": "Code - Build Lead Profile",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [470, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://api:3000/api/ai/qualify",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={ \"lead\": {{ JSON.stringify($json.rawLead) }} }",
+        "options": {
+          "timeout": 45000
+        }
+      },
+      "id": "call-ai-qualify",
+      "name": "HTTP - AI Qualification API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [690, 300],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 3000,
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "ai-success",
+              "leftValue": "={{ $json.success }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-ai-response",
+      "name": "IF - AI Response Valid",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [910, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Fallback scoring when AI fails\nconst profile = $('Code - Build Lead Profile').first().json;\n\nlet score = 50; // Base score\n\n// Email quality\nif (profile.emailAnalysis.isBusinessEmail) score += 15;\nif (profile.emailAnalysis.isCorporate) score += 10;\n\n// Data completeness\nscore += Math.floor(profile.completeness.score * 20);\n\n// Source signals\nif (profile.sourceSignals.isHighIntent) score += 10;\n\n// Cap score at 100\nscore = Math.min(score, 100);\n\nreturn {\n  success: true,\n  data: {\n    score,\n    confidence: 0.6,\n    reasoning: 'Fallback rule-based scoring (AI unavailable)',\n    signals: {\n      positive: profile.emailAnalysis.isBusinessEmail ? ['Business email domain'] : [],\n      negative: profile.completeness.score < 0.5 ? ['Incomplete profile'] : [],\n      neutral: ['Fallback scoring applied']\n    },\n    recommendedAction: score >= 70 ? 'schedule_call' : 'nurture_sequence',\n    fallback: true\n  }\n};"
+      },
+      "id": "fallback-scoring",
+      "name": "Code - Fallback Scoring",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1130, 420]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Combine profile with AI qualification results\nconst profile = $('Code - Build Lead Profile').first().json;\nconst aiResult = $input.first().json;\n\nconst qualification = {\n  leadId: profile.leadId,\n  email: profile.email,\n  name: profile.name,\n  company: profile.company,\n  \n  // AI qualification results\n  score: aiResult.data?.score || 0,\n  confidence: aiResult.data?.confidence || 0,\n  reasoning: aiResult.data?.reasoning || '',\n  \n  // Signals breakdown\n  signals: aiResult.data?.signals || {},\n  \n  // Routing decision\n  recommendedAction: aiResult.data?.recommendedAction || 'needs_review',\n  \n  // Qualification tier\n  tier: (() => {\n    const score = aiResult.data?.score || 0;\n    if (score >= 80) return 'hot';\n    if (score >= 60) return 'warm';\n    if (score >= 40) return 'nurture';\n    return 'cold';\n  })(),\n  \n  // Metadata\n  qualifiedAt: new Date().toISOString(),\n  processingId: $execution.id,\n  isFallback: aiResult.data?.fallback || aiResult.data?.mock || false\n};\n\nreturn qualification;"
+      },
+      "id": "merge-results",
+      "name": "Code - Merge Results",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1350, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "is-hot",
+              "leftValue": "={{ $json.tier }}",
+              "rightValue": "hot",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "route-hot",
+      "name": "IF - Hot Lead",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1570, 200]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "is-warm",
+              "leftValue": "={{ $json.tier }}",
+              "rightValue": "warm",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "route-warm",
+      "name": "IF - Warm Lead",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1570, 400]
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "action",
+              "value": "immediate_outreach"
+            },
+            {
+              "name": "priority",
+              "value": "high"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "action-hot",
+      "name": "Set - Hot Lead Action",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.3,
+      "position": [1790, 100]
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "action",
+              "value": "sales_sequence"
+            },
+            {
+              "name": "priority",
+              "value": "medium"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "action-warm",
+      "name": "Set - Warm Lead Action",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.3,
+      "position": [1790, 300]
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "action",
+              "value": "nurture_sequence"
+            },
+            {
+              "name": "priority",
+              "value": "low"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "action-cold",
+      "name": "Set - Nurture/Cold Action",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.3,
+      "position": [1790, 500]
+    }
+  ],
+  "connections": {
+    "Webhook - Qualification Request": {
+      "main": [
+        [
+          {
+            "node": "Code - Build Lead Profile",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Build Lead Profile": {
+      "main": [
+        [
+          {
+            "node": "HTTP - AI Qualification API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP - AI Qualification API": {
+      "main": [
+        [
+          {
+            "node": "IF - AI Response Valid",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - AI Response Valid": {
+      "main": [
+        [
+          {
+            "node": "Code - Merge Results",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Code - Fallback Scoring",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Fallback Scoring": {
+      "main": [
+        [
+          {
+            "node": "Code - Merge Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Merge Results": {
+      "main": [
+        [
+          {
+            "node": "IF - Hot Lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Hot Lead": {
+      "main": [
+        [
+          {
+            "node": "Set - Hot Lead Action",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "IF - Warm Lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Warm Lead": {
+      "main": [
+        [
+          {
+            "node": "Set - Warm Lead Action",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Set - Nurture/Cold Action",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": "06-error-monitoring"
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "name": "ai",
+      "id": "3"
+    },
+    {
+      "name": "qualification",
+      "id": "4"
+    }
+  ],
+  "meta": {
+    "instanceId": "autoscale-crm-hub"
+  }
+}

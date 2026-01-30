@@ -1,0 +1,230 @@
+{
+  "nodes": [
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "documentId": {
+          "__rl": true,
+          "value": "1qwRj5vMXyrCiuAohIX-gcOmGK1M9Hc1BMLkK0vBE_3Y",
+          "mode": "list",
+          "cachedResultName": "Medical_Workflow",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1qwRj5vMXyrCiuAohIX-gcOmGK1M9Hc1BMLkK0vBE_3Y/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1441703497,
+          "mode": "list",
+          "cachedResultName": "waitlist",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1qwRj5vMXyrCiuAohIX-gcOmGK1M9Hc1BMLkK0vBE_3Y/edit#gid=1441703497"
+        },
+        "event": "rowAdded",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheetsTrigger",
+      "typeVersion": 1,
+      "position": [
+        -480,
+        96
+      ],
+      "id": "3a77463d-0a0f-474c-8709-c9dfbc85ebf2",
+      "name": "Google Sheets Trigger: New Waitlist Entry",
+      "webhookId": "auto-generated-on-activation",
+      "credentials": {
+        "googleSheetsTriggerOAuth2Api": {
+          "id": "XHKth9oLJD4kWD2S",
+          "name": "Google Sheets Trigger account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "1qwRj5vMXyrCiuAohIX-gcOmGK1M9Hc1BMLkK0vBE_3Y",
+          "mode": "list",
+          "cachedResultName": "Medical_Workflow",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1qwRj5vMXyrCiuAohIX-gcOmGK1M9Hc1BMLkK0vBE_3Y/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1441703497,
+          "mode": "list",
+          "cachedResultName": "waitlist",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1qwRj5vMXyrCiuAohIX-gcOmGK1M9Hc1BMLkK0vBE_3Y/edit#gid=1441703497"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Notification_sent": "TRUE",
+            "row_number": 0
+          },
+          "matchingColumns": [
+            "Notification_sent"
+          ],
+          "schema": [
+            {
+              "id": "Timestamp",
+              "displayName": "Timestamp",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Full Name",
+              "displayName": "Full Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Phone Number",
+              "displayName": "Phone Number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Email Address",
+              "displayName": "Email Address",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Notification_sent",
+              "displayName": "Notification_sent",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "row_number",
+              "displayName": "row_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "readOnly": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        208,
+        96
+      ],
+      "id": "8737522a-9c52-4a8f-acfa-e21680cd5b0b",
+      "name": "Update row in sheet",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "Gu4sptcmPE5XoUXG",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.patientEmail }}",
+        "subject": "=✅ You're on the Waitlist - Dr. Jennifer's Clinic",
+        "emailType": "text",
+        "message": "=Hi {{ $json.firstName }},\n\nThank you for joining our appointment waitlist!\n\n📋 Your Waitlist Details:\n  • Name: {{ $json.patientName }}\n  • Phone: {{ $json.patientPhone }}\n  • Email: {{ $json.patientEmail }}\n  • Joined: {{ $json.signupDate }}\n\n🔔 What Happens Next?\n\nWhen an appointment slot becomes available (due to cancellation or reschedule), we'll send you an email notification. The notification will include:\n  • Date and time of the available slot\n  • Doctor name\n  • Appointment type\n  • Direct booking link\n\n⚡ First to book gets the appointment! When you receive a notification, click the booking link quickly to claim the slot.\n\n💡 Tips:\n  • Check your email regularly (including spam folder)\n  • Make sure {{ $json.patientEmail }} is correct\n  • Respond quickly when notified (slots fill fast!)\n\n📞 Questions?\nCall us at: (XXX) XXX-XXXX\nOr reply to this email.\n\nWe'll notify you as soon as a slot opens up!\n\nBest regards,\nDr. Jennifer's Clinic Team\n\n---\nThis is an automated confirmation email. Please do not reply directly unless you have questions.",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        96
+      ],
+      "id": "64a7537a-86e9-4fc2-a5fb-7dc95545e8e4",
+      "name": "Gmail: Send Confirmation",
+      "webhookId": "be25944f-2fa0-4c47-a30d-8a30970c6416",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "jg90AbaYwktTrzdN",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "/**\n * Parse new waitlist entry\n * Calculate waitlist position\n * \n * Google Form column names:\n * - Timestamp: \"03/11/2025 08:54:07\"\n * - Full Name: \"Robert T Kearney\"\n * - Phone Number: \"509-432-7356\"\n * - Email Address: \"Robert@Kearney.com\"\n */\n\nconst newEntry = $input.first().json;\n\n// Extract patient data using EXACT Google Form column names\nconst patientName = newEntry[\"Full Name\"] || \"Patient\";\nconst patientEmail = newEntry[\"Email Address\"] || \"\";\nconst patientPhone = newEntry[\"Phone Number\"] || \"\";\nconst timestamp = newEntry[\"Timestamp\"] || new Date().toISOString();\n\n// Validate email exists\nif (!patientEmail) {\n  console.error(\"❌ No email provided, cannot send confirmation\");\n  return [];\n}\n\n// Parse timestamp for friendly display\n// Google Forms format: \"03/11/2025 08:54:07\" (MM/DD/YYYY HH:MM:SS)\nlet signupDate = \"today\";\ntry {\n  // Handle Google Forms date format\n  const date = new Date(timestamp);\n  signupDate = date.toLocaleDateString('en-US', { \n    weekday: 'long', \n    year: 'numeric', \n    month: 'long', \n    day: 'numeric' \n  });\n} catch (error) {\n  console.error(\"Error parsing timestamp:\", error.message);\n  signupDate = timestamp; // Fallback to raw timestamp\n}\n\n// Get all waitlist entries to calculate position\nconst allEntries = $input.all();\nconst position = allEntries.length; // Simple position (last = newest)\n\n// Extract first name for personalized email\nconst firstName = patientName.split(' ')[0];\n\nconsole.log(`\n📋 New Waitlist Signup:\n  - Name: ${patientName}\n  - Email: ${patientEmail}\n  - Phone: ${patientPhone}\n  - Position: #${position}\n  - Signed up: ${signupDate}\n  - Timestamp (raw): ${timestamp}\n`);\n\nreturn [{\n  json: {\n    patientName,\n    patientEmail,\n    patientPhone,\n    signupDate,\n    timestamp,\n    waitlistPosition: position,\n    firstName\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -224,
+        96
+      ],
+      "id": "614a2eec-441c-43f7-80ba-8bb330e5a27c",
+      "name": "Parse Waitlist Entry"
+    }
+  ],
+  "connections": {
+    "Google Sheets Trigger: New Waitlist Entry": {
+      "main": [
+        [
+          {
+            "node": "Parse Waitlist Entry",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail: Send Confirmation": {
+      "main": [
+        [
+          {
+            "node": "Update row in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Waitlist Entry": {
+      "main": [
+        [
+          {
+            "node": "Gmail: Send Confirmation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "7b3125be3eb2b56ab7606a684daa96104964f42d4c53676367f2a84787aca813"
+  }
+}

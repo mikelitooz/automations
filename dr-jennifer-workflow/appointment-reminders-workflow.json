@@ -1,0 +1,422 @@
+{
+  "name": "Dr. Jennifer - Appointment Reminders (Outbound)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 1
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger-1",
+      "name": "Run Every Hour",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "",
+          "cachedResultName": "Appointment Schedule"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gid=0",
+          "cachedResultName": "Appointments"
+        },
+        "filtersUI": {
+          "values": []
+        },
+        "options": {
+          "rangeDefinition": "detectAutomatically"
+        }
+      },
+      "id": "google-sheets-read",
+      "name": "Get Appointments",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.4,
+      "position": [460, 300],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "PLACEHOLDER",
+          "name": "Google Sheets Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Calculate which appointments need reminders\nconst now = new Date();\nconst results = [];\n\nfor (const item of $input.all()) {\n  const appointmentDate = new Date(item.json.Date + ' ' + item.json.Time);\n  const hoursDiff = (appointmentDate - now) / (1000 * 60 * 60);\n  \n  let reminderType = null;\n  let shouldSend = false;\n  \n  // 48-hour reminder (between 47-49 hours before)\n  if (hoursDiff >= 47 && hoursDiff <= 49 && !item.json['48hr_Reminder_Sent']) {\n    reminderType = '48hr';\n    shouldSend = true;\n  }\n  // 24-hour reminder (between 23-25 hours before, only if not confirmed)\n  else if (hoursDiff >= 23 && hoursDiff <= 25 && !item.json['24hr_Reminder_Sent'] && item.json.Confirmed !== 'Yes') {\n    reminderType = '24hr';\n    shouldSend = true;\n  }\n  // 2-hour reminder (between 1.5-2.5 hours before)\n  else if (hoursDiff >= 1.5 && hoursDiff <= 2.5 && !item.json['2hr_Reminder_Sent']) {\n    reminderType = '2hr';\n    shouldSend = true;\n  }\n  \n  if (shouldSend) {\n    results.push({\n      json: {\n        ...item.json,\n        reminderType,\n        hoursDiff: Math.round(hoursDiff * 10) / 10,\n        appointmentDateTime: appointmentDate.toISOString()\n      }\n    });\n  }\n}\n\nreturn results;"
+      },
+      "id": "code-calculate-reminders",
+      "name": "Calculate Reminders",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.reminderType }}",
+                    "rightValue": "48hr",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "48hr"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.reminderType }}",
+                    "rightValue": "24hr",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "24hr"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.reminderType }}",
+                    "rightValue": "2hr",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "2hr"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "switch-reminder-type",
+      "name": "Route by Reminder Type",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.1,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "fromNumber": "={{ $env.TWILIO_PHONE_NUMBER }}",
+        "toNumber": "={{ $json.Phone }}",
+        "message": "=Hi {{ $json.Patient_Name }}, this is Dr. Jennifer's office.\n\nAppointment reminder:\n📅 {{ $json.Date }} at {{ $json.Time }}\n📍 {{ $json.Office_Address }}\n👨‍⚕️ Dr. {{ $json.Doctor_Name }}\n\nReply:\n1 = Confirm\n2 = Cancel\n3 = Reschedule",
+        "options": {}
+      },
+      "id": "twilio-48hr",
+      "name": "Send 48hr Reminder",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [1120, 180],
+      "credentials": {
+        "twilioApi": {
+          "id": "PLACEHOLDER",
+          "name": "Twilio Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fromNumber": "={{ $env.TWILIO_PHONE_NUMBER }}",
+        "toNumber": "={{ $json.Phone }}",
+        "message": "=⚠️ REMINDER: You have an appointment TOMORROW at {{ $json.Time }}.\n\nReply CONFIRM or you may lose your spot.\n\nNeed to cancel? Reply CANCEL so we can offer it to someone else.",
+        "options": {}
+      },
+      "id": "twilio-24hr",
+      "name": "Send 24hr Reminder",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [1120, 300],
+      "credentials": {
+        "twilioApi": {
+          "id": "PLACEHOLDER",
+          "name": "Twilio Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fromNumber": "={{ $env.TWILIO_PHONE_NUMBER }}",
+        "toNumber": "={{ $json.Phone }}",
+        "message": "=See you in 2 hours! {{ $json.Time }} at {{ $json.Office_Address }}.\n\nRunning late? Call us: {{ $json.Office_Phone }}\n\nNeed directions? {{ $json.Google_Maps_Link }}",
+        "options": {}
+      },
+      "id": "twilio-2hr",
+      "name": "Send 2hr Reminder",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [1120, 420],
+      "credentials": {
+        "twilioApi": {
+          "id": "PLACEHOLDER",
+          "name": "Twilio Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "",
+          "cachedResultName": "Appointment Schedule"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gid=0",
+          "cachedResultName": "Appointments"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "48hr_Reminder_Sent": "={{ $json.reminderType === '48hr' ? 'Yes' : $json['48hr_Reminder_Sent'] }}",
+            "24hr_Reminder_Sent": "={{ $json.reminderType === '24hr' ? 'Yes' : $json['24hr_Reminder_Sent'] }}",
+            "2hr_Reminder_Sent": "={{ $json.reminderType === '2hr' ? 'Yes' : $json['2hr_Reminder_Sent'] }}"
+          },
+          "matchingColumns": ["Patient_Name", "Date", "Time"],
+          "schema": []
+        },
+        "options": {}
+      },
+      "id": "google-sheets-update-48hr",
+      "name": "Update Sheet (48hr)",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.4,
+      "position": [1340, 180],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "PLACEHOLDER",
+          "name": "Google Sheets Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "",
+          "cachedResultName": "Appointment Schedule"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gid=0",
+          "cachedResultName": "Appointments"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "48hr_Reminder_Sent": "={{ $json.reminderType === '48hr' ? 'Yes' : $json['48hr_Reminder_Sent'] }}",
+            "24hr_Reminder_Sent": "={{ $json.reminderType === '24hr' ? 'Yes' : $json['24hr_Reminder_Sent'] }}",
+            "2hr_Reminder_Sent": "={{ $json.reminderType === '2hr' ? 'Yes' : $json['2hr_Reminder_Sent'] }}"
+          },
+          "matchingColumns": ["Patient_Name", "Date", "Time"],
+          "schema": []
+        },
+        "options": {}
+      },
+      "id": "google-sheets-update-24hr",
+      "name": "Update Sheet (24hr)",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.4,
+      "position": [1340, 300],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "PLACEHOLDER",
+          "name": "Google Sheets Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "",
+          "cachedResultName": "Appointment Schedule"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gid=0",
+          "cachedResultName": "Appointments"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "48hr_Reminder_Sent": "={{ $json.reminderType === '48hr' ? 'Yes' : $json['48hr_Reminder_Sent'] }}",
+            "24hr_Reminder_Sent": "={{ $json.reminderType === '24hr' ? 'Yes' : $json['24hr_Reminder_Sent'] }}",
+            "2hr_Reminder_Sent": "={{ $json.reminderType === '2hr' ? 'Yes' : $json['2hr_Reminder_Sent'] }}"
+          },
+          "matchingColumns": ["Patient_Name", "Date", "Time"],
+          "schema": []
+        },
+        "options": {}
+      },
+      "id": "google-sheets-update-2hr",
+      "name": "Update Sheet (2hr)",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.4,
+      "position": [1340, 420],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "PLACEHOLDER",
+          "name": "Google Sheets Account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Run Every Hour": {
+      "main": [
+        [
+          {
+            "node": "Get Appointments",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Appointments": {
+      "main": [
+        [
+          {
+            "node": "Calculate Reminders",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculate Reminders": {
+      "main": [
+        [
+          {
+            "node": "Route by Reminder Type",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route by Reminder Type": {
+      "main": [
+        [
+          {
+            "node": "Send 48hr Reminder",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send 24hr Reminder",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send 2hr Reminder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send 48hr Reminder": {
+      "main": [
+        [
+          {
+            "node": "Update Sheet (48hr)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send 24hr Reminder": {
+      "main": [
+        [
+          {
+            "node": "Update Sheet (24hr)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send 2hr Reminder": {
+      "main": [
+        [
+          {
+            "node": "Update Sheet (2hr)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 1,
+  "updatedAt": "2025-10-20T00:00:00.000Z",
+  "versionId": "1"
+}

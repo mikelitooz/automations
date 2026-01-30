@@ -1,0 +1,403 @@
+{
+  "name": "Marcus Real Estate - Market Report Generator",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "market-report",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Trigger: Manual or API",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 400],
+      "webhookId": "market-report-generator"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse request for market report parameters\nconst body = $input.first().json.body;\n\n// Support multiple neighborhoods in single request\nconst neighborhoods = body.neighborhoods || body.neighborhood || '';\nconst neighborhoodList = neighborhoods.split(',').map(n => n.trim()).filter(n => n);\n\nif (neighborhoodList.length === 0) {\n  throw new Error('Please provide at least one neighborhood');\n}\n\nconst reports = neighborhoodList.map(neighborhood => ({\n  json: {\n    neighborhood,\n    recipientEmail: body.email || body.recipient || '',\n    recipientName: body.name || 'Client',\n    includeCharts: body.includeCharts !== false,\n    reportType: body.reportType || 'comprehensive' // 'comprehensive' | 'quick'\n  }\n}));\n\nreturn reports;"
+      },
+      "id": "parse-request",
+      "name": "Parse Report Request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 400]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.MLS_API_URL || 'https://api.bridgedataoutput.com/api/v2/OData/listings' }}",
+        "method": "GET",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "$filter",
+              "value": "=City eq '{{ $json.neighborhood }}' and CloseDate ge {{ $now.minus({ days: 90 }).toFormat('yyyy-MM-dd') }}"
+            },
+            {
+              "name": "$select",
+              "value": "ListingId,ListPrice,ClosePrice,CloseDate,DaysOnMarket,BedroomsTotal,BathroomsTotalInteger,LivingArea,PropertyType,City"
+            },
+            {
+              "name": "$top",
+              "value": "100"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "fetch-sales-data",
+      "name": "Fetch 90-Day Sales Data",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [680, 280]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.MLS_API_URL || 'https://api.bridgedataoutput.com/api/v2/OData/listings' }}",
+        "method": "GET",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "$filter",
+              "value": "=City eq '{{ $json.neighborhood }}' and StandardStatus eq 'Active'"
+            },
+            {
+              "name": "$select",
+              "value": "ListingId,ListPrice,DaysOnMarket,BedroomsTotal,BathroomsTotalInteger,LivingArea,PropertyType"
+            },
+            {
+              "name": "$top",
+              "value": "50"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "fetch-active-listings",
+      "name": "Fetch Active Listings",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [680, 480]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Calculate market statistics from MLS data\nconst requestData = $('Parse Report Request').item.json;\nconst salesData = $('Fetch 90-Day Sales Data').item.json.value || [];\nconst activeData = $('Fetch Active Listings').item.json.value || [];\n\nif (salesData.length === 0) {\n  return [{\n    json: {\n      ...requestData,\n      error: 'No sales data found for this neighborhood',\n      hasData: false\n    }\n  }];\n}\n\n// Calculate sold statistics\nconst soldPrices = salesData.map(s => s.ClosePrice || s.ListPrice).filter(p => p > 0);\nconst daysOnMarket = salesData.map(s => s.DaysOnMarket).filter(d => d >= 0);\nconst pricePerSqft = salesData\n  .filter(s => s.ClosePrice > 0 && s.LivingArea > 0)\n  .map(s => s.ClosePrice / s.LivingArea);\n\n// Calculate averages\nconst avgSoldPrice = Math.round(soldPrices.reduce((a, b) => a + b, 0) / soldPrices.length);\nconst medianSoldPrice = soldPrices.sort((a, b) => a - b)[Math.floor(soldPrices.length / 2)];\nconst avgDaysOnMarket = Math.round(daysOnMarket.reduce((a, b) => a + b, 0) / daysOnMarket.length);\nconst avgPricePerSqft = Math.round(pricePerSqft.reduce((a, b) => a + b, 0) / pricePerSqft.length);\n\n// Calculate active listings stats\nconst activePrices = activeData.map(a => a.ListPrice).filter(p => p > 0);\nconst avgActivePrice = activePrices.length > 0 \n  ? Math.round(activePrices.reduce((a, b) => a + b, 0) / activePrices.length)\n  : 0;\n\n// Market temperature (simple heuristic)\nlet marketTemp = 'Balanced';\nif (avgDaysOnMarket < 15 && salesData.length > activeData.length) {\n  marketTemp = 'Hot (Seller\\'s Market)';\n} else if (avgDaysOnMarket > 60 && activeData.length > salesData.length * 1.5) {\n  marketTemp = 'Cool (Buyer\\'s Market)';\n} else if (avgDaysOnMarket < 30) {\n  marketTemp = 'Warm';\n}\n\n// Get recent comparable sales (last 10)\nconst recentSales = salesData\n  .sort((a, b) => new Date(b.CloseDate) - new Date(a.CloseDate))\n  .slice(0, 10)\n  .map(s => ({\n    address: s.UnparsedAddress || 'Address N/A',\n    price: s.ClosePrice || s.ListPrice,\n    date: s.CloseDate,\n    beds: s.BedroomsTotal,\n    baths: s.BathroomsTotalInteger,\n    sqft: s.LivingArea,\n    daysOnMarket: s.DaysOnMarket\n  }));\n\n// Get current listings to watch (4 best values)\nconst listingsToWatch = activeData\n  .filter(a => a.LivingArea > 0)\n  .map(a => ({\n    ...a,\n    pricePerSqft: a.ListPrice / a.LivingArea\n  }))\n  .sort((a, b) => a.pricePerSqft - b.pricePerSqft)\n  .slice(0, 4);\n\nreturn [{\n  json: {\n    ...requestData,\n    hasData: true,\n    stats: {\n      avgSoldPrice,\n      medianSoldPrice,\n      avgActivePrice,\n      avgDaysOnMarket,\n      avgPricePerSqft,\n      totalSold: salesData.length,\n      activeListings: activeData.length,\n      marketTemp\n    },\n    recentSales,\n    listingsToWatch,\n    rawSalesData: salesData,\n    rawActiveData: activeData\n  }\n}];"
+      },
+      "id": "calculate-stats",
+      "name": "Calculate Market Statistics",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 400]
+    },
+    {
+      "parameters": {
+        "url": "https://api.anthropic.com/v1/messages",
+        "method": "POST",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "={{ $env.CLAUDE_API_KEY }}"
+            },
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            },
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"claude-3-5-sonnet-20241022\",\n  \"max_tokens\": 2048,\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"You are a real estate market analyst. Generate a professional market report for {{ $json.neighborhood }} based on this data:\\n\\nMARKET STATISTICS (Last 90 Days):\\n- Average Sold Price: ${{ $json.stats.avgSoldPrice }}\\n- Median Sold Price: ${{ $json.stats.medianSoldPrice }}\\n- Average Days on Market: {{ $json.stats.avgDaysOnMarket }} days\\n- Price per Square Foot: ${{ $json.stats.avgPricePerSqft }}\\n- Total Homes Sold: {{ $json.stats.totalSold }}\\n- Active Listings: {{ $json.stats.activeListings }}\\n- Market Temperature: {{ $json.stats.marketTemp }}\\n- Average Active Listing Price: ${{ $json.stats.avgActivePrice }}\\n\\nGenerate a report in HTML format with these sections:\\n1. Market Overview (2-3 sentences on current conditions)\\n2. Key Metrics Summary (bullet points)\\n3. Buyer's Perspective (what buyers should know)\\n4. Seller's Perspective (what sellers should know)\\n5. Neighborhood Highlights (based on data trends)\\n6. Market Outlook (1-2 sentences prediction)\\n\\nUse professional but friendly tone. Address report to {{ $json.recipientName }}. Keep it concise and actionable.\"\n    }\n  ],\n  \"temperature\": 0.7\n}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "claude-analysis",
+      "name": "Claude AI Market Analysis",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1120, 400]
+    },
+    {
+      "parameters": {
+        "url": "https://quickchart.io/chart",
+        "method": "POST",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"width\": 800,\n  \"height\": 400,\n  \"format\": \"png\",\n  \"chart\": {\n    \"type\": \"bar\",\n    \"data\": {\n      \"labels\": [\"Avg Sold Price\", \"Median Sold Price\", \"Avg Active Price\"],\n      \"datasets\": [\n        {\n          \"label\": \"Price ($)\",\n          \"data\": [\n            {{ $('Calculate Market Statistics').item.json.stats.avgSoldPrice }},\n            {{ $('Calculate Market Statistics').item.json.stats.medianSoldPrice }},\n            {{ $('Calculate Market Statistics').item.json.stats.avgActivePrice }}\n          ],\n          \"backgroundColor\": [\"#2563eb\", \"#10b981\", \"#f59e0b\"]\n        }\n      ]\n    },\n    \"options\": {\n      \"title\": {\n        \"display\": true,\n        \"text\": \"{{ $('Calculate Market Statistics').item.json.neighborhood }} - Price Comparison\"\n      },\n      \"scales\": {\n        \"yAxes\": [{\n          \"ticks\": {\n            \"callback\": \"function(value) { return '$' + value.toLocaleString(); }\"\n          }\n        }]\n      }\n    }\n  }\n}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,             "responseFormat": "file"
+            }
+          }
+        }
+      },
+      "id": "generate-price-chart",
+      "name": "Generate Price Chart",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1120, 580]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Assemble final market report with all components\nconst data = $('Calculate Market Statistics').item.json;\nconst claudeResponse = $('Claude AI Market Analysis').item.json;\nconst aiAnalysis = claudeResponse.content?.[0]?.text || '';\n\n// Extract HTML from Claude response (handles markdown code blocks)\nlet analysisHtml = aiAnalysis;\nconst htmlMatch = aiAnalysis.match(/```html\\s*([\\s\\S]*?)```/);\nif (htmlMatch) {\n  analysisHtml = htmlMatch[1].trim();\n}\n\n// Build comparable sales table\nconst salesTableRows = data.recentSales.map(sale => `\n  <tr>\n    <td style=\"padding: 10px; border: 1px solid #e2e8f0;\">${sale.address}</td>\n    <td style=\"padding: 10px; border: 1px solid #e2e8f0; text-align: right;\">$${sale.price.toLocaleString()}</td>\n    <td style=\"padding: 10px; border: 1px solid #e2e8f0; text-align: center;\">${sale.beds || 'N/A'}</td>\n    <td style=\"padding: 10px; border: 1px solid #e2e8f0; text-align: center;\">${sale.baths || 'N/A'}</td>\n    <td style=\"padding: 10px; border: 1px solid #e2e8f0; text-align: right;\">${sale.sqft?.toLocaleString() || 'N/A'}</td>\n    <td style=\"padding: 10px; border: 1px solid #e2e8f0; text-align: center;\">${sale.daysOnMarket || 'N/A'}</td>\n    <td style=\"padding: 10px; border: 1px solid #e2e8f0; text-align: center;\">${new Date(sale.date).toLocaleDateString()}</td>\n  </tr>\n`).join('');\n\n// Build current listings table\nconst listingsTableRows = data.listingsToWatch.map(listing => `\n  <tr>\n    <td style=\"padding: 10px; border: 1px solid #e2e8f0;\">$${listing.ListPrice.toLocaleString()}</td>\n    <td style=\"padding: 10px; border: 1px solid #e2e8f0; text-align: center;\">${listing.BedroomsTotal || 'N/A'}</td>\n    <td style=\"padding: 10px; border: 1px solid #e2e8f0; text-align: center;\">${listing.BathroomsTotalInteger || 'N/A'}</td>\n    <td style=\"padding: 10px; border: 1px solid #e2e8f0; text-align: right;\">${listing.LivingArea?.toLocaleString() || 'N/A'}</td>\n    <td style=\"padding: 10px; border: 1px solid #e2e8f0; text-align: right;\">$${Math.round(listing.pricePerSqft)}</td>\n    <td style=\"padding: 10px; border: 1px solid #e2e8f0; text-align: center;\">${listing.DaysOnMarket || 0}</td>\n  </tr>\n`).join('');\n\nconst fullReportHtml = `\n<!DOCTYPE html>\n<html>\n<head>\n  <style>\n    body { font-family: 'Segoe UI', Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; background: #f8fafc; }\n    .container { max-width: 900px; margin: 0 auto; padding: 20px; }\n    .header { background: linear-gradient(135deg, #1e40af 0%, #2563eb 100%); color: white; padding: 40px; border-radius: 12px 12px 0 0; text-align: center; }\n    .header h1 { margin: 0; font-size: 36px; }\n    .header p { margin: 10px 0 0 0; font-size: 18px; opacity: 0.95; }\n    .content { background: white; padding: 40px; border-left: 1px solid #e2e8f0; border-right: 1px solid #e2e8f0; }\n    .stat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin: 30px 0; }\n    .stat-box { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 20px; text-align: center; }\n    .stat-value { font-size: 28px; font-weight: bold; color: #1e40af; margin: 10px 0; }\n    .stat-label { font-size: 14px; color: #64748b; text-transform: uppercase; }\n    .section { margin: 40px 0; }\n    .section h2 { color: #1e40af; border-bottom: 2px solid #2563eb; padding-bottom: 10px; }\n    table { width: 100%; border-collapse: collapse; margin: 20px 0; }\n    th { background: #2563eb; color: white; padding: 12px; text-align: left; }\n    .chart { text-align: center; margin: 30px 0; }\n    .footer { background: #f1f5f9; padding: 30px; text-align: center; border-radius: 0 0 12px 12px; }\n    .market-temp { display: inline-block; padding: 10px 20px; border-radius: 20px; font-weight: bold; font-size: 18px; margin: 20px 0; }\n    .hot { background: #fee2e2; color: #dc2626; }\n    .warm { background: #fef3c7; color: #f59e0b; }\n    .balanced { background: #dbeafe; color: #2563eb; }\n    .cool { background: #e0e7ff; color: #4f46e5; }\n  </style>\n</head>\n<body>\n  <div class=\"container\">\n    <div class=\"header\">\n      <h1>📊 ${data.neighborhood} Market Report</h1>\n      <p>90-Day Analysis | Generated ${new Date().toLocaleDateString()}</p>\n      <div class=\"market-temp ${data.stats.marketTemp.toLowerCase().includes('hot') ? 'hot' : data.stats.marketTemp.toLowerCase().includes('warm') ? 'warm' : data.stats.marketTemp.toLowerCase().includes('cool') ? 'cool' : 'balanced'}\">\n        ${data.stats.marketTemp}\n      </div>\n    </div>\n    \n    <div class=\"content\">\n      <div class=\"section\">\n        <h2>📈 Key Market Metrics</h2>\n        <div class=\"stat-grid\">\n          <div class=\"stat-box\">\n            <div class=\"stat-label\">Avg Sold Price</div>\n            <div class=\"stat-value\">$${data.stats.avgSoldPrice.toLocaleString()}</div>\n          </div>\n          <div class=\"stat-box\">\n            <div class=\"stat-label\">Days on Market</div>\n            <div class=\"stat-value\">${data.stats.avgDaysOnMarket}</div>\n          </div>\n          <div class=\"stat-box\">\n            <div class=\"stat-label\">Price/SqFt</div>\n            <div class=\"stat-value\">$${data.stats.avgPricePerSqft}</div>\n          </div>\n          <div class=\"stat-box\">\n            <div class=\"stat-label\">Homes Sold</div>\n            <div class=\"stat-value\">${data.stats.totalSold}</div>\n          </div>\n          <div class=\"stat-box\">\n            <div class=\"stat-label\">Active Listings</div>\n            <div class=\"stat-value\">${data.stats.activeListings}</div>\n          </div>\n          <div class=\"stat-box\">\n            <div class=\"stat-label\">Median Price</div>\n            <div class=\"stat-value\">$${data.stats.medianSoldPrice.toLocaleString()}</div>\n          </div>\n        </div>\n      </div>\n      \n      <div class=\"section\">\n        ${analysisHtml}\n      </div>\n      \n      <div class=\"section\">\n        <h2>🏘️ Recent Comparable Sales</h2>\n        <table>\n          <thead>\n            <tr>\n              <th>Address</th>\n              <th>Price</th>\n              <th>Beds</th>\n              <th>Baths</th>\n              <th>Sq Ft</th>\n              <th>Days on Market</th>\n              <th>Sold Date</th>\n            </tr>\n          </thead>\n          <tbody>\n            ${salesTableRows}\n          </tbody>\n        </table>\n      </div>\n      \n      <div class=\"section\">\n        <h2>🏠 Current Listings to Watch</h2>\n        <p>These properties offer the best value per square foot currently on the market:</p>\n        <table>\n          <thead>\n            <tr>\n              <th>Price</th>\n              <th>Beds</th>\n              <th>Baths</th>\n              <th>Sq Ft</th>\n              <th>$/SqFt</th>\n              <th>Days Listed</th>\n            </tr>\n          </thead>\n          <tbody>\n            ${listingsTableRows}\n          </tbody>\n        </table>\n      </div>\n    </div>\n    \n    <div class=\"footer\">\n      <p style=\"margin: 0 0 10px 0; font-size: 18px; color: #1e293b;\">\n        <strong>Questions about this market?</strong>\n      </p>\n      <p style=\"margin: 0; color: #64748b;\">\n        Let's discuss what these numbers mean for you!<br/>\n        <strong>Marcus</strong><br/>\n        📧 {{ $env.AGENT_EMAIL }} | 📞 {{ $env.AGENT_PHONE }}\n      </p>\n    </div>\n  </div>\n</body>\n</html>\n`;\n\nreturn [{\n  json: {\n    ...data,\n    reportHtml: fullReportHtml,\n    reportSubject: `${data.neighborhood} Market Report - ${new Date().toLocaleDateString()}`\n  }\n}];"
+      },
+      "id": "assemble-report",
+      "name": "Assemble Final Report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1340, 400]
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $env.AGENT_EMAIL }}",
+        "toEmail": "={{ $json.recipientEmail || $env.AGENT_EMAIL }}",
+        "subject": "={{ $json.reportSubject }}",
+        "emailType": "html",
+        "message": "={{ $json.reportHtml }}",
+        "options": {}
+      },
+      "id": "send-report-email",
+      "name": "Send Market Report Email",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [1560, 400],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "gmailOAuth2",
+          "name": "Gmail OAuth2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $env.GOOGLE_SHEETS_ID }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Market Reports Log",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Timestamp": "={{ $now.toISO() }}",
+            "Neighborhood": "={{ $json.neighborhood }}",
+            "Recipient": "={{ $json.recipientEmail }}",
+            "Avg Sold Price": "={{ $json.stats.avgSoldPrice }}",
+            "Days on Market": "={{ $json.stats.avgDaysOnMarket }}",
+            "Market Temp": "={{ $json.stats.marketTemp }}",
+            "Total Sold": "={{ $json.stats.totalSold }}",
+            "Active Listings": "={{ $json.stats.activeListings }}"
+          }
+        },
+        "options": {}
+      },
+      "id": "log-report",
+      "name": "Log Report to Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [1780, 400],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "googleSheetsOAuth2",
+          "name": "Google Sheets OAuth2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"success\": true, \"neighborhood\": $json.neighborhood, \"reportSent\": true } }}",
+        "options": {}
+      },
+      "id": "webhook-response",
+      "name": "Webhook Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [2000, 400]
+    },
+    {
+      "parameters": {
+        "content": "## MARKET REPORT GENERATOR\n\nTrigger via:\n1. Webhook/API: POST to /market-report\n   Body: {\"neighborhood\": \"Oak Park\", \"email\": \"client@email.com\"}\n2. Manual execution\n3. Slack command (optional)\n\nFeatures:\n- Fetches 90-day sales + active listings from MLS\n- Claude AI generates professional analysis\n- Beautiful HTML report with:\n  - Market statistics dashboard\n  - AI-powered insights\n  - Comparable sales table\n  - Current listings to watch\n  - Price charts (optional)\n- Emails report to client\n- Logs to Google Sheet\n\nBatch support:\n- Multiple neighborhoods in one call\n- Example: {\"neighborhoods\": \"Oak Park, Riverside, Downtown\"}\n\nSaves 20+ hours monthly!\nAutomate quarterly reports to past clients.",
+        "height": 520,
+        "width": 360,
+        "color": 4
+      },
+      "id": "sticky-note-reports",
+      "name": "Sticky Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [240, 40]
+    }
+  ],
+  "connections": {
+    "Trigger: Manual or API": {
+      "main": [
+        [
+          {
+            "node": "Parse Report Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Report Request": {
+      "main": [
+        [
+          {
+            "node": "Fetch 90-Day Sales Data",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Fetch Active Listings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch 90-Day Sales Data": {
+      "main": [
+        [
+          {
+            "node": "Calculate Market Statistics",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Active Listings": {
+      "main": [
+        [
+          {
+            "node": "Calculate Market Statistics",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculate Market Statistics": {
+      "main": [
+        [
+          {
+            "node": "Claude AI Market Analysis",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Generate Price Chart",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claude AI Market Analysis": {
+      "main": [
+        [
+          {
+            "node": "Assemble Final Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Price Chart": {
+      "main": [
+        [
+          {
+            "node": "Assemble Final Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Assemble Final Report": {
+      "main": [
+        [
+          {
+            "node": "Send Market Report Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Market Report Email": {
+      "main": [
+        [
+          {
+            "node": "Log Report to Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Report to Sheet": {
+      "main": [
+        [
+          {
+            "node": "Webhook Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "createdAt": "2025-01-22T00:00:00.000Z",
+      "updatedAt": "2025-01-22T00:00:00.000Z",
+      "id": "real-estate-automation",
+      "name": "Real Estate Automation"
+    }
+  ],
+  "triggerCount": 1,
+  "updatedAt": "2025-01-22T00:00:00.000Z",
+  "versionId": "1"
+}

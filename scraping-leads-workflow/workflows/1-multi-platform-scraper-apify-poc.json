@@ -1,0 +1,636 @@
+{
+  "name": "1. Multi-Platform Lead Scraper (Apify POC)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 24,
+              "triggerAtHour": 9
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Schedule Daily 9AM",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [240, 400]
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "apify_token",
+              "value": "YOUR_APIFY_API_TOKEN"
+            },
+            {
+              "name": "test_mode",
+              "value": "true"
+            },
+            {
+              "name": "linkedin_search_url",
+              "value": "https://www.linkedin.com/search/results/people/?keywords=founder%20OR%20ceo%20OR%20operations%20manager"
+            },
+            {
+              "name": "google_maps_query",
+              "value": "digital marketing agencies in San Francisco"
+            },
+            {
+              "name": "facebook_search_query",
+              "value": "automation agency"
+            }
+          ],
+          "number": [
+            {
+              "name": "max_results_per_platform",
+              "value": 5
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "config-node",
+      "name": "Apify Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [460, 400],
+      "notes": "Configuration for Apify scraping. Set test_mode=false for production runs. Get Apify token from: https://console.apify.com/account/integrations"
+    },
+    {
+      "parameters": {
+        "url": "https://api.apify.com/v2/acts/curious_coder~linkedin-profile-scraper/runs",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "contentType": "json",
+        "jsonBody": "={\n  \"startUrls\": [\n    { \"url\": \"{{ $json.linkedin_search_url }}\" }\n  ],\n  \"maxItems\": {{ $json.test_mode === 'true' ? 5 : $json.max_results_per_platform }},\n  \"proxy\": {\n    \"useApifyProxy\": true\n  }\n}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true
+            }
+          }
+        }
+      },
+      "id": "linkedin-start-actor",
+      "name": "LinkedIn - Start Actor",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [680, 200],
+      "notes": "Starts Apify LinkedIn scraper actor. Cost: ~$3-5 per 1,000 profiles.",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "apify-header-auth",
+          "name": "Apify API Token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "amount": 45,
+        "unit": "seconds"
+      },
+      "id": "linkedin-wait",
+      "name": "Wait for LinkedIn",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [900, 200],
+      "notes": "Wait 45 seconds for LinkedIn actor to complete scraping",
+      "webhookId": "linkedin-wait-webhook"
+    },
+    {
+      "parameters": {
+        "url": "=https://api.apify.com/v2/datasets/{{ $json.body.data.defaultDatasetId }}/items",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {}
+      },
+      "id": "linkedin-fetch-results",
+      "name": "LinkedIn - Fetch Results",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1120, 200],
+      "notes": "Fetches LinkedIn lead data from Apify dataset",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "apify-header-auth",
+          "name": "Apify API Token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "linkedin-success-check",
+              "operator": {
+                "type": "array",
+                "operation": "notEmpty"
+              },
+              "leftValue": "={{ $json }}",
+              "rightValue": ""
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "linkedin-error-check",
+      "name": "LinkedIn - Error Check",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [1340, 200],
+      "notes": "Checks if LinkedIn scraping was successful. Continues workflow even if failed."
+    },
+    {
+      "parameters": {
+        "url": "https://api.apify.com/v2/acts/apify~facebook-pages-scraper/runs",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "contentType": "json",
+        "jsonBody": "={\n  \"startUrls\": [\n    { \"url\": \"https://www.facebook.com/search/pages/?q={{ encodeURIComponent($json.facebook_search_query) }}\" }\n  ],\n  \"maxItems\": {{ $json.test_mode === 'true' ? 5 : $json.max_results_per_platform }},\n  \"language\": \"en\"\n}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true
+            }
+          }
+        }
+      },
+      "id": "facebook-start-actor",
+      "name": "Facebook - Start Actor",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [680, 400],
+      "notes": "Starts Apify Facebook pages scraper actor. Cost: ~$4-5 per 1,000 pages.",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "apify-header-auth",
+          "name": "Apify API Token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "amount": 60,
+        "unit": "seconds"
+      },
+      "id": "facebook-wait",
+      "name": "Wait for Facebook",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [900, 400],
+      "notes": "Wait 60 seconds for Facebook actor to complete (slower than LinkedIn)",
+      "webhookId": "facebook-wait-webhook"
+    },
+    {
+      "parameters": {
+        "url": "=https://api.apify.com/v2/datasets/{{ $json.body.data.defaultDatasetId }}/items",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {}
+      },
+      "id": "facebook-fetch-results",
+      "name": "Facebook - Fetch Results",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1120, 400],
+      "notes": "Fetches Facebook page data from Apify dataset",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "apify-header-auth",
+          "name": "Apify API Token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "facebook-success-check",
+              "operator": {
+                "type": "array",
+                "operation": "notEmpty"
+              },
+              "leftValue": "={{ $json }}",
+              "rightValue": ""
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "facebook-error-check",
+      "name": "Facebook - Error Check",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [1340, 400],
+      "notes": "Checks if Facebook scraping was successful. Continues workflow even if failed."
+    },
+    {
+      "parameters": {
+        "url": "https://api.apify.com/v2/acts/compass~crawler-google-places/runs",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "contentType": "json",
+        "jsonBody": "={\n  \"searchStringsArray\": [\n    \"{{ $json.google_maps_query }}\"\n  ],\n  \"maxCrawledPlacesPerSearch\": {{ $json.test_mode === 'true' ? 5 : $json.max_results_per_platform }},\n  \"language\": \"en\",\n  \"exportPlaceUrls\": false,\n  \"includeWebResults\": false\n}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true
+            }
+          }
+        }
+      },
+      "id": "google-maps-start-actor",
+      "name": "Google Maps - Start Actor",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [680, 600],
+      "notes": "Starts Apify Google Maps scraper actor. Cost: ~$2-3 per 1,000 businesses.",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "apify-header-auth",
+          "name": "Apify API Token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "amount": 30,
+        "unit": "seconds"
+      },
+      "id": "google-maps-wait",
+      "name": "Wait for Google Maps",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [900, 600],
+      "notes": "Wait 30 seconds for Google Maps actor to complete (fastest scraper)",
+      "webhookId": "google-maps-wait-webhook"
+    },
+    {
+      "parameters": {
+        "url": "=https://api.apify.com/v2/datasets/{{ $json.body.data.defaultDatasetId }}/items",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {}
+      },
+      "id": "google-maps-fetch-results",
+      "name": "Google Maps - Fetch Results",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1120, 600],
+      "notes": "Fetches Google Maps business data from Apify dataset",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "apify-header-auth",
+          "name": "Apify API Token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "google-maps-success-check",
+              "operator": {
+                "type": "array",
+                "operation": "notEmpty"
+              },
+              "leftValue": "={{ $json }}",
+              "rightValue": ""
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "google-maps-error-check",
+      "name": "Google Maps - Error Check",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [1340, 600],
+      "notes": "Checks if Google Maps scraping was successful. Continues workflow even if failed."
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combinationMode": "mergeByPosition",
+        "options": {}
+      },
+      "id": "merge-all-platforms",
+      "name": "Merge All Platforms",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [1560, 400],
+      "notes": "Combines successful results from all 3 platforms"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Transform Apify data to standardized schema with enhanced fields\n// Maps platform-specific fields to unified format\n\nconst transformedLeads = [];\n\n$input.all().forEach((item, index) => {\n  const raw = item.json;\n  \n  // Skip empty or error items\n  if (!raw || raw.error || Object.keys(raw).length === 0) {\n    return;\n  }\n\n  // Detect source platform based on available fields\n  let sourcePlatform = 'Unknown';\n  if (raw.profileUrl || raw.linkedInUrl) sourcePlatform = 'LinkedIn';\n  else if (raw.title && raw.category) sourcePlatform = 'Google Maps';\n  else if (raw.url && raw.url.includes('facebook.com')) sourcePlatform = 'Facebook';\n\n  // LinkedIn field mapping\n  if (sourcePlatform === 'LinkedIn') {\n    const fullName = raw.fullName || raw.name || '';\n    const nameParts = fullName.trim().split(/\\s+/);\n    const firstName = nameParts[0] || '';\n    const lastName = nameParts.slice(1).join(' ') || '';\n\n    transformedLeads.push({\n      // Basic fields\n      first_name: firstName,\n      last_name: lastName,\n      full_name: fullName,\n      company_name: raw.companyName || raw.company?.name || '',\n      job_title: raw.headline || raw.title || '',\n      location: raw.location || `${raw.city || ''}, ${raw.state || ''}`.trim(),\n      \n      // Contact fields\n      email_address: raw.email || '',\n      phone_number: raw.phone || raw.phoneNumbers?.[0] || '',\n      linkedin_url: raw.profileUrl || raw.url || '',\n      company_website: raw.companyWebsite || '',\n      \n      // Enhanced Apify fields\n      twitter_handle: raw.twitter || '',\n      connections_count: raw.connectionsCount || null,\n      follower_count: raw.followersCount || null,\n      is_premium: raw.isPremium || false,\n      current_company_duration: raw.currentCompanyDuration || '',\n      skills: raw.skills ? raw.skills.join(', ') : '',\n      education: raw.education ? raw.education.map(e => e.schoolName).join(', ') : '',\n      \n      // Company fields\n      company_size: raw.companySize || raw.company?.employeeCount || null,\n      company_industry: raw.industry || raw.company?.industry || '',\n      company_location: raw.companyLocation || '',\n      \n      // Metadata\n      source_platform: sourcePlatform,\n      scrape_date: new Date().toISOString().split('T')[0],\n      lead_score: null,\n      qualification_status: 'Pending'\n    });\n  }\n  \n  // Google Maps field mapping\n  else if (sourcePlatform === 'Google Maps') {\n    transformedLeads.push({\n      // Basic fields (business-focused)\n      first_name: '',\n      last_name: '',\n      full_name: raw.ownerName || '',\n      company_name: raw.title || raw.name || '',\n      job_title: raw.category || 'Business Owner',\n      location: raw.address || `${raw.city || ''}, ${raw.state || ''}`.trim(),\n      \n      // Contact fields\n      email_address: raw.email || '',\n      phone_number: raw.phone || raw.phoneNumber || '',\n      linkedin_url: '',\n      company_website: raw.website || raw.url || '',\n      \n      // Enhanced Apify fields\n      twitter_handle: '',\n      connections_count: null,\n      follower_count: null,\n      is_premium: false,\n      current_company_duration: '',\n      skills: '',\n      education: '',\n      \n      // Company fields (Google Maps-specific)\n      company_size: null,\n      company_industry: raw.category || raw.categoryName || '',\n      company_location: raw.address || '',\n      rating: raw.rating || raw.stars || null,\n      review_count: raw.reviewsCount || raw.totalScore || null,\n      price_level: raw.priceLevel || '',\n      opening_hours: raw.openingHours ? JSON.stringify(raw.openingHours) : '',\n      place_id: raw.placeId || '',\n      latitude: raw.latitude || raw.location?.lat || null,\n      longitude: raw.longitude || raw.location?.lng || null,\n      \n      // Metadata\n      source_platform: sourcePlatform,\n      scrape_date: new Date().toISOString().split('T')[0],\n      lead_score: raw.rating ? Math.round(raw.rating) : null,\n      qualification_status: 'Pending'\n    });\n  }\n  \n  // Facebook field mapping\n  else if (sourcePlatform === 'Facebook') {\n    transformedLeads.push({\n      // Basic fields (page-focused)\n      first_name: '',\n      last_name: '',\n      full_name: '',\n      company_name: raw.name || raw.title || '',\n      job_title: raw.category || 'Business Owner',\n      location: raw.location || raw.address || '',\n      \n      // Contact fields\n      email_address: raw.email || raw.emails?.[0] || '',\n      phone_number: raw.phone || raw.phoneNumber || '',\n      linkedin_url: '',\n      company_website: raw.website || raw.url || '',\n      \n      // Enhanced Apify fields\n      twitter_handle: '',\n      connections_count: null,\n      follower_count: raw.likes || raw.followersCount || null,\n      is_premium: false,\n      current_company_duration: '',\n      skills: '',\n      education: '',\n      \n      // Company fields (Facebook-specific)\n      company_size: null,\n      company_industry: raw.category || '',\n      company_location: raw.location || '',\n      facebook_url: raw.url || '',\n      facebook_about: raw.about || raw.description || '',\n      facebook_likes: raw.likes || null,\n      facebook_checkins: raw.checkins || null,\n      \n      // Metadata\n      source_platform: sourcePlatform,\n      scrape_date: new Date().toISOString().split('T')[0],\n      lead_score: null,\n      qualification_status: 'Pending'\n    });\n  }\n});\n\nconsole.log(`Transformed ${transformedLeads.length} leads from ${$input.all().length} raw items`);\n\nif (transformedLeads.length === 0) {\n  return [{ json: { error: 'No leads to transform. All platforms may have failed.' } }];\n}\n\nreturn transformedLeads.map(lead => ({ json: lead }));"
+      },
+      "id": "transform-data",
+      "name": "Transform Apify Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1780, 400],
+      "notes": "Maps Apify-specific fields to standardized schema with 25+ enhanced fields"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Deduplicate leads across all platforms\n// Priority: Email > LinkedIn URL > Company+Name\n\nconst uniqueLeads = [];\nconst seenEmails = new Set();\nconst seenLinkedInURLs = new Set();\nconst seenCompanyNames = new Set();\n\n$input.all().forEach((item) => {\n  const lead = item.json;\n  \n  // Skip error objects\n  if (lead.error) {\n    console.log('Skipping error item:', lead.error);\n    return;\n  }\n\n  const email = lead.email_address?.toLowerCase().trim();\n  const linkedInURL = lead.linkedin_url?.toLowerCase().trim();\n  const companyKey = `${lead.company_name?.toLowerCase().trim()}|${lead.full_name?.toLowerCase().trim()}`;\n\n  // Deduplication logic\n  if (email && seenEmails.has(email)) {\n    console.log(`Duplicate email skipped: ${email}`);\n    return;\n  }\n  \n  if (linkedInURL && seenLinkedInURLs.has(linkedInURL)) {\n    console.log(`Duplicate LinkedIn URL skipped: ${linkedInURL}`);\n    return;\n  }\n  \n  if (lead.company_name && lead.full_name && seenCompanyNames.has(companyKey)) {\n    console.log(`Duplicate company+name skipped: ${companyKey}`);\n    return;\n  }\n\n  // Mark as seen\n  if (email) seenEmails.add(email);\n  if (linkedInURL) seenLinkedInURLs.add(linkedInURL);\n  if (lead.company_name && lead.full_name) seenCompanyNames.add(companyKey);\n\n  // Add lead_id\n  lead.lead_id = `LEAD-${new Date().getFullYear()}-${String(uniqueLeads.length + 1).padStart(4, '0')}`;\n  \n  // Data quality check\n  if (!lead.company_name && !lead.full_name) {\n    console.log('Skipping lead with no company or name');\n    return;\n  }\n\n  uniqueLeads.push(lead);\n});\n\nconsole.log(`Deduplicated: ${$input.all().length} items → ${uniqueLeads.length} unique leads`);\n\nif (uniqueLeads.length === 0) {\n  return [{ json: { error: 'No unique leads after deduplication' } }];\n}\n\nreturn uniqueLeads.map(lead => ({ json: lead }));"
+      },
+      "id": "deduplicate",
+      "name": "Deduplicate Leads",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2000, 400],
+      "notes": "Removes duplicates by email, LinkedIn URL, or company+name"
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "YOUR_GOOGLE_SHEET_ID"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "id",
+          "value": "Raw Leads - Apify"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Lead ID": "={{ $json.lead_id }}",
+            "First Name": "={{ $json.first_name }}",
+            "Last Name": "={{ $json.last_name }}",
+            "Full Name": "={{ $json.full_name }}",
+            "Company Name": "={{ $json.company_name }}",
+            "Job Title": "={{ $json.job_title }}",
+            "Location": "={{ $json.location }}",
+            "Email Address": "={{ $json.email_address }}",
+            "Phone Number": "={{ $json.phone_number }}",
+            "LinkedIn URL": "={{ $json.linkedin_url }}",
+            "Company Website": "={{ $json.company_website }}",
+            "Twitter Handle": "={{ $json.twitter_handle }}",
+            "Connections Count": "={{ $json.connections_count }}",
+            "Follower Count": "={{ $json.follower_count }}",
+            "Is Premium": "={{ $json.is_premium }}",
+            "Skills": "={{ $json.skills }}",
+            "Education": "={{ $json.education }}",
+            "Company Size": "={{ $json.company_size }}",
+            "Company Industry": "={{ $json.company_industry }}",
+            "Rating": "={{ $json.rating }}",
+            "Review Count": "={{ $json.review_count }}",
+            "Facebook URL": "={{ $json.facebook_url }}",
+            "Facebook Likes": "={{ $json.facebook_likes }}",
+            "Source Platform": "={{ $json.source_platform }}",
+            "Scrape Date": "={{ $json.scrape_date }}",
+            "Lead Score": "={{ $json.lead_score }}",
+            "Qualification Status": "={{ $json.qualification_status }}"
+          }
+        },
+        "options": {}
+      },
+      "id": "append-to-sheets",
+      "name": "Append to Google Sheets",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [2220, 400],
+      "notes": "Appends enriched leads to 'Raw Leads - Apify' tab in Google Sheets"
+    }
+  ],
+  "connections": {
+    "Schedule Daily 9AM": {
+      "main": [
+        [
+          {
+            "node": "Apify Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Apify Config": {
+      "main": [
+        [
+          {
+            "node": "LinkedIn - Start Actor",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Facebook - Start Actor",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Google Maps - Start Actor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "LinkedIn - Start Actor": {
+      "main": [
+        [
+          {
+            "node": "Wait for LinkedIn",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait for LinkedIn": {
+      "main": [
+        [
+          {
+            "node": "LinkedIn - Fetch Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "LinkedIn - Fetch Results": {
+      "main": [
+        [
+          {
+            "node": "LinkedIn - Error Check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "LinkedIn - Error Check": {
+      "main": [
+        [
+          {
+            "node": "Merge All Platforms",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Facebook - Start Actor": {
+      "main": [
+        [
+          {
+            "node": "Wait for Facebook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait for Facebook": {
+      "main": [
+        [
+          {
+            "node": "Facebook - Fetch Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Facebook - Fetch Results": {
+      "main": [
+        [
+          {
+            "node": "Facebook - Error Check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Facebook - Error Check": {
+      "main": [
+        [
+          {
+            "node": "Merge All Platforms",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Google Maps - Start Actor": {
+      "main": [
+        [
+          {
+            "node": "Wait for Google Maps",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait for Google Maps": {
+      "main": [
+        [
+          {
+            "node": "Google Maps - Fetch Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Maps - Fetch Results": {
+      "main": [
+        [
+          {
+            "node": "Google Maps - Error Check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Maps - Error Check": {
+      "main": [
+        [
+          {
+            "node": "Merge All Platforms",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Merge All Platforms": {
+      "main": [
+        [
+          {
+            "node": "Transform Apify Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Transform Apify Data": {
+      "main": [
+        [
+          {
+            "node": "Deduplicate Leads",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Deduplicate Leads": {
+      "main": [
+        [
+          {
+            "node": "Append to Google Sheets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 0,
+  "updatedAt": "2025-01-04T12:00:00.000Z",
+  "versionId": "1.0-apify-poc"
+}

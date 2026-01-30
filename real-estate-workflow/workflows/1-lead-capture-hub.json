@@ -1,0 +1,401 @@
+{
+  "name": "Marcus Real Estate - Lead Capture Hub",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "zillow-lead",
+        "options": {
+          "responseMode": "responseNode"
+        }
+      },
+      "id": "webhook-zillow",
+      "name": "Zillow Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 200],
+      "webhookId": "zillow-lead-capture"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "realtor-lead",
+        "options": {
+          "responseMode": "responseNode"
+        }
+      },
+      "id": "webhook-realtor",
+      "name": "Realtor.com Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 380],
+      "webhookId": "realtor-lead-capture"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "website-contact",
+        "options": {
+          "responseMode": "responseNode"
+        }
+      },
+      "id": "webhook-website",
+      "name": "Website Contact Form",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 560],
+      "webhookId": "website-contact-form"
+    },
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "filters": {
+          "from": "={{ $env.AGENT_EMAIL }}",
+          "subject": "Referral:"
+        },
+        "options": {
+          "markAsRead": true
+        }
+      },
+      "id": "gmail-trigger",
+      "name": "Gmail Referral Emails",
+      "type": "n8n-nodes-base.gmailTrigger",
+      "typeVersion": 1.1,
+      "position": [240, 740],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "gmailOAuth2",
+          "name": "Gmail OAuth2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "events": ["incoming-call"],
+        "options": {}
+      },
+      "id": "twilio-trigger",
+      "name": "Twilio Phone Calls",
+      "type": "n8n-nodes-base.twilioTrigger",
+      "typeVersion": 1,
+      "position": [240, 920],
+      "credentials": {
+        "twilioApi": {
+          "id": "twilioApi",
+          "name": "Twilio API"
+        }
+      },
+      "webhookId": "twilio-call-capture"
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineAll",
+        "options": {}
+      },
+      "id": "merge-all-sources",
+      "name": "Merge All Lead Sources",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [460, 560]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Normalize lead data from different sources into consistent format\nconst items = $input.all();\nconst normalizedLeads = [];\n\nfor (const item of items) {\n  let lead = {\n    timestamp: new Date().toISOString(),\n    source: '',\n    name: '',\n    phone: '',\n    email: '',\n    budget: '',\n    propertyType: '',\n    preapprovalStatus: 'Unknown',\n    lastContact: new Date().toISOString(),\n    status: 'New',\n    leadScore: 'Unqualified',\n    timeline: '',\n    priorities: '',\n    notes: '',\n    propertiesSent: '',\n    viewingsScheduled: '',\n    engagementScore: 0\n  };\n\n  // Detect source and normalize fields\n  const json = item.json;\n  \n  // Zillow leads\n  if (json.body?.source === 'zillow' || json.query?.source === 'zillow') {\n    lead.source = 'Zillow';\n    lead.name = json.body?.name || json.body?.customer_name || '';\n    lead.phone = json.body?.phone || json.body?.phone_number || '';\n    lead.email = json.body?.email || '';\n    lead.budget = json.body?.budget || json.body?.price_range || '';\n    lead.propertyType = json.body?.property_type || json.body?.home_type || '';\n    lead.priorities = json.body?.message || json.body?.notes || '';\n  }\n  \n  // Realtor.com leads\n  else if (json.body?.source === 'realtor' || json.query?.source === 'realtor') {\n    lead.source = 'Realtor.com';\n    lead.name = json.body?.name || json.body?.full_name || '';\n    lead.phone = json.body?.phone || json.body?.mobile || '';\n    lead.email = json.body?.email || '';\n    lead.budget = json.body?.max_price || json.body?.budget || '';\n    lead.propertyType = json.body?.property_type || '';\n    lead.priorities = json.body?.comments || json.body?.message || '';\n  }\n  \n  // Website contact form\n  else if (json.body?.source === 'website' || json.query?.source === 'website') {\n    lead.source = 'Website';\n    lead.name = json.body?.name || json.body?.full_name || '';\n    lead.phone = json.body?.phone || json.body?.phone_number || '';\n    lead.email = json.body?.email || '';\n    lead.budget = json.body?.budget || json.body?.price_range || '';\n    lead.propertyType = json.body?.property_type || json.body?.looking_for || '';\n    lead.priorities = json.body?.message || json.body?.comments || json.body?.notes || '';\n  }\n  \n  // Gmail referrals\n  else if (json.from || json.subject?.includes('Referral')) {\n    lead.source = 'Email Referral';\n    lead.email = json.from || '';\n    \n    // Extract name from email subject or body\n    const subjectMatch = json.subject?.match(/Referral:\\s*([^<]+)/);\n    lead.name = subjectMatch ? subjectMatch[1].trim() : 'Unknown';\n    \n    // Extract phone from email body (basic regex)\n    const phoneMatch = json.textPlain?.match(/(\\+?1?[-.]?\\(?\\d{3}\\)?[-.]?\\d{3}[-.]?\\d{4})/);\n    lead.phone = phoneMatch ? phoneMatch[1] : '';\n    \n    lead.notes = 'Referral from: ' + (json.from || 'Unknown');\n    lead.priorities = json.textPlain?.substring(0, 500) || '';\n  }\n  \n  // Twilio phone calls\n  else if (json.From || json.CallSid) {\n    lead.source = 'Phone Call';\n    lead.phone = json.From || json.Caller || '';\n    lead.name = 'Unknown (Call)';\n    lead.notes = `Call SID: ${json.CallSid || 'N/A'} | Status: ${json.CallStatus || 'N/A'}`;\n    \n    // If voicemail transcription available\n    if (json.TranscriptionText) {\n      lead.priorities = json.TranscriptionText;\n    }\n  }\n\n  // Clean phone number (remove non-digits except +)\n  if (lead.phone) {\n    lead.phone = lead.phone.replace(/[^\\d+]/g, '');\n  }\n\n  // Clean budget (extract numbers)\n  if (lead.budget && typeof lead.budget === 'string') {\n    const budgetMatch = lead.budget.match(/\\$?([\\d,]+)/);\n    if (budgetMatch) {\n      lead.budget = budgetMatch[1].replace(/,/g, '');\n    }\n  }\n\n  normalizedLeads.push({ json: lead });\n}\n\nreturn normalizedLeads;"
+      },
+      "id": "normalize-data",
+      "name": "Normalize Lead Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 560]
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $env.GOOGLE_SHEETS_ID }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Master Leads",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Timestamp": "={{ $json.timestamp }}",
+            "Source": "={{ $json.source }}",
+            "Name": "={{ $json.name }}",
+            "Phone": "={{ $json.phone }}",
+            "Email": "={{ $json.email }}",
+            "Budget": "={{ $json.budget }}",
+            "Property Type": "={{ $json.propertyType }}",
+            "Preapproval Status": "={{ $json.preapprovalStatus }}",
+            "Last Contact": "={{ $json.lastContact }}",
+            "Status": "={{ $json.status }}",
+            "Lead Score": "={{ $json.leadScore }}",
+            "Timeline": "={{ $json.timeline }}",
+            "Priorities": "={{ $json.priorities }}",
+            "Notes": "={{ $json.notes }}",
+            "Properties Sent": "={{ $json.propertiesSent }}",
+            "Viewings Scheduled": "={{ $json.viewingsScheduled }}",
+            "Engagement Score": "={{ $json.engagementScore }}"
+          }
+        },
+        "options": {
+          "cellFormat": "USER_ENTERED",
+          "useAppend": true
+        }
+      },
+      "id": "append-to-sheet",
+      "name": "Append to Master Leads Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [900, 560],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "googleSheetsOAuth2",
+          "name": "Google Sheets OAuth2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $env.AGENT_EMAIL }}",
+        "toEmail": "={{ $env.AGENT_EMAIL }}",
+        "subject": "🚨 New Lead: {{ $json.name }} from {{ $json.source }}",
+        "emailType": "html",
+        "message": "=<!DOCTYPE html>\n<html>\n<head>\n  <style>\n    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }\n    .container { max-width: 600px; margin: 0 auto; padding: 20px; }\n    .header { background: #2563eb; color: white; padding: 20px; border-radius: 8px 8px 0 0; }\n    .content { background: #f8fafc; padding: 20px; border: 1px solid #e2e8f0; }\n    .field { margin: 10px 0; }\n    .label { font-weight: bold; color: #475569; }\n    .value { color: #1e293b; }\n    .hot { background: #fee2e2; border-left: 4px solid #dc2626; padding: 10px; margin: 15px 0; }\n    .button { display: inline-block; background: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; margin: 15px 0; }\n  </style>\n</head>\n<body>\n  <div class=\"container\">\n    <div class=\"header\">\n      <h2>🎯 New Lead Captured!</h2>\n    </div>\n    <div class=\"content\">\n      <div class=\"field\">\n        <span class=\"label\">Name:</span>\n        <span class=\"value\">{{ $json.name }}</span>\n      </div>\n      <div class=\"field\">\n        <span class=\"label\">Source:</span>\n        <span class=\"value\">{{ $json.source }}</span>\n      </div>\n      <div class=\"field\">\n        <span class=\"label\">Phone:</span>\n        <span class=\"value\"><a href=\"tel:{{ $json.phone }}\">{{ $json.phone }}</a></span>\n      </div>\n      <div class=\"field\">\n        <span class=\"label\">Email:</span>\n        <span class=\"value\"><a href=\"mailto:{{ $json.email }}\">{{ $json.email }}</a></span>\n      </div>\n      <div class=\"field\">\n        <span class=\"label\">Budget:</span>\n        <span class=\"value\">${{ $json.budget || 'Not specified' }}</span>\n      </div>\n      <div class=\"field\">\n        <span class=\"label\">Property Type:</span>\n        <span class=\"value\">{{ $json.propertyType || 'Not specified' }}</span>\n      </div>\n      <div class=\"field\">\n        <span class=\"label\">Message/Priorities:</span>\n        <span class=\"value\">{{ $json.priorities || 'None provided' }}</span>\n      </div>\n      \n      <div class=\"hot\">\n        ⚡ <strong>Action Required:</strong> Respond within 60 seconds for best conversion! (Workflow 2 will auto-respond)\n      </div>\n      \n      <a href=\"https://docs.google.com/spreadsheets/d/{{ $env.GOOGLE_SHEETS_ID }}\" class=\"button\">View in Master Leads Sheet</a>\n    </div>\n  </div>\n</body>\n</html>",
+        "options": {}
+      },
+      "id": "email-notification",
+      "name": "Email Notification to Agent",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [1120, 420],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "gmailOAuth2",
+          "name": "Gmail OAuth2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fromPhoneNumber": "={{ $env.TWILIO_PHONE_NUMBER }}",
+        "toPhoneNumber": "={{ $env.AGENT_PHONE }}",
+        "message": "=🎯 NEW LEAD: {{ $json.name }}\n📍 Source: {{ $json.source }}\n📞 {{ $json.phone }}\n✉️ {{ $json.email }}\n💰 Budget: ${{ $json.budget || 'TBD' }}\n🏠 {{ $json.propertyType || 'Any type' }}\n\n⚡ Auto-response sent! Check Master Leads sheet.",
+        "options": {}
+      },
+      "id": "sms-notification",
+      "name": "SMS Notification to Agent",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 2,
+      "position": [1120, 700],
+      "credentials": {
+        "twilioApi": {
+          "id": "twilioApi",
+          "name": "Twilio API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"success\": true, \"message\": \"Lead captured successfully\", \"leadId\": $json.timestamp } }}",
+        "options": {
+          "responseCode": 200,
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          }
+        }
+      },
+      "id": "webhook-response-zillow",
+      "name": "Webhook Response (Zillow)",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1340, 200]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"success\": true, \"message\": \"Lead captured successfully\", \"leadId\": $json.timestamp } }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "webhook-response-realtor",
+      "name": "Webhook Response (Realtor)",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1340, 380]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"success\": true, \"message\": \"Thank you! We'll be in touch within 60 seconds.\", \"leadId\": $json.timestamp } }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "webhook-response-website",
+      "name": "Webhook Response (Website)",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1340, 560]
+    },
+    {
+      "parameters": {
+        "content": "## LEAD CAPTURE HUB\n\nThis workflow captures leads from 5 sources:\n1. Zillow webhook\n2. Realtor.com webhook\n3. Website contact form\n4. Gmail referral emails\n5. Twilio phone calls\n\nAll leads are normalized and appended to the Master Leads Google Sheet.\n\nAgent receives:\n- Email notification with lead preview\n- SMS notification for immediate action\n\nWorkflow 2 (AI Qualification) triggers automatically for instant response.",
+        "height": 340,
+        "width": 300,
+        "color": 4
+      },
+      "id": "sticky-note-1",
+      "name": "Sticky Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [240, 40]
+    }
+  ],
+  "connections": {
+    "Zillow Webhook": {
+      "main": [
+        [
+          {
+            "node": "Merge All Lead Sources",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Realtor.com Webhook": {
+      "main": [
+        [
+          {
+            "node": "Merge All Lead Sources",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Website Contact Form": {
+      "main": [
+        [
+          {
+            "node": "Merge All Lead Sources",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "Gmail Referral Emails": {
+      "main": [
+        [
+          {
+            "node": "Merge All Lead Sources",
+            "type": "main",
+            "index": 3
+          }
+        ]
+      ]
+    },
+    "Twilio Phone Calls": {
+      "main": [
+        [
+          {
+            "node": "Merge All Lead Sources",
+            "type": "main",
+            "index": 4
+          }
+        ]
+      ]
+    },
+    "Merge All Lead Sources": {
+      "main": [
+        [
+          {
+            "node": "Normalize Lead Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Lead Data": {
+      "main": [
+        [
+          {
+            "node": "Append to Master Leads Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Append to Master Leads Sheet": {
+      "main": [
+        [
+          {
+            "node": "Email Notification to Agent",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "SMS Notification to Agent",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Webhook Response (Zillow)",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Webhook Response (Realtor)",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Webhook Response (Website)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "createdAt": "2025-01-22T00:00:00.000Z",
+      "updatedAt": "2025-01-22T00:00:00.000Z",
+      "id": "real-estate-automation",
+      "name": "Real Estate Automation"
+    }
+  ],
+  "triggerCount": 5,
+  "updatedAt": "2025-01-22T00:00:00.000Z",
+  "versionId": "1"
+}

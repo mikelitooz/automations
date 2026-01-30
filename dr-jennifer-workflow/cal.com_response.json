@@ -1,0 +1,144 @@
+[
+  {
+    "triggerEvent": "BOOKING_CREATED",
+    "createdAt": "2025-10-30T20:59:48.561Z",
+    "bookerUrl": "https://cal.com",
+    "title": "Appointment with Dr. Jennifer between Izzy Dev and Robert K Hughes",
+    "startTime": "2025-10-31T15:30:00Z",
+    "endTime": "2025-10-31T15:45:00Z",
+    "additionalNotes": "",
+    "type": "appointment-with-dr.-jennifer",
+    "description": "Appointment with Dr. Jennifer",
+    "eventTypeId": 3783211,
+    "hideCalendarNotes": false,
+    "hideCalendarEventDetails": false,
+    "hideOrganizerEmail": false,
+    "schedulingType": null,
+    "seatsPerTimeSlot": null,
+    "seatsShowAttendees": true,
+    "seatsShowAvailabilityCount": true,
+    "customReplyToEmail": null,
+    "disableRescheduling": false,
+    "disableCancelling": false,
+    "organizer": {
+      "id": 1880671,
+      "name": "Izzy Dev",
+      "email": "chiizzy12a@gmail.com",
+      "username": "izzydevbuilds",
+      "timeZone": "Africa/Lagos",
+      "language": {
+        "locale": "en"
+      },
+      "timeFormat": "h:mma",
+      "utcOffset": 60
+    },
+    "attendees": [
+      {
+        "email": "izzydevbuilds@gmail.com",
+        "name": "Robert K Hughes",
+        "phoneNumber": "+16692215958",
+        "firstName": "",
+        "lastName": "",
+        "timeZone": "Africa/Lagos",
+        "language": {
+          "locale": "en"
+        },
+        "utcOffset": 60
+      }
+    ],
+    "customInputs": {},
+    "responses": {
+      "name": {
+        "label": "your_name",
+        "value": "Robert K Hughes",
+        "isHidden": false
+      },
+      "email": {
+        "label": "email_address",
+        "value": "izzydevbuilds@gmail.com",
+        "isHidden": false
+      },
+      "attendeePhoneNumber": {
+        "label": "phone_number",
+        "value": "+16692215958",
+        "isHidden": false
+      },
+      "location": {
+        "label": "location",
+        "value": {
+          "value": "1600 Pennsylvania Avenue NW, Washington, D.C. 20500. ",
+          "optionValue": ""
+        },
+        "isHidden": false
+      },
+      "title": {
+        "label": "what_is_this_meeting_about",
+        "isHidden": true
+      },
+      "notes": {
+        "label": "additional_notes",
+        "isHidden": true
+      },
+      "guests": {
+        "label": "additional_guests",
+        "value": [],
+        "isHidden": true
+      },
+      "rescheduleReason": {
+        "label": "reason_for_reschedule",
+        "isHidden": true
+      },
+      "appointmentType": {
+        "label": "Appointment Type",
+        "value": "New Patient Visit",
+        "isHidden": false
+      }
+    },
+    "userFieldsResponses": {
+      "appointmentType": {
+        "label": "Appointment Type",
+        "value": "New Patient Visit",
+        "isHidden": false
+      }
+    },
+    "location": "1600 Pennsylvania Avenue NW, Washington, D.C. 20500. ",
+    "destinationCalendar": [
+      {
+        "id": 923367,
+        "integration": "google_calendar",
+        "externalId": "chiizzy12a@gmail.com",
+        "primaryEmail": "chiizzy12a@gmail.com",
+        "userId": 1880671,
+        "eventTypeId": null,
+        "credentialId": 1471831,
+        "createdAt": "2025-10-30T13:45:46.463Z",
+        "updatedAt": "2025-10-30T13:45:46.463Z",
+        "delegationCredentialId": null,
+        "domainWideDelegationCredentialId": null
+      }
+    ],
+    "iCalUID": "kdqyUrVNEmyC5Ah2HPMuSb@Cal.com",
+    "iCalSequence": 0,
+    "requiresConfirmation": false,
+    "oneTimePassword": null,
+    "uid": "kdqyUrVNEmyC5Ah2HPMuSb",
+    "appsStatus": [
+      {
+        "appName": "google-calendar",
+        "type": "google_calendar",
+        "success": 1,
+        "failures": 0,
+        "errors": [],
+        "warnings": []
+      }
+    ],
+    "eventTitle": "Appointment with Dr. Jennifer",
+    "eventDescription": "Appointment with Dr. Jennifer",
+    "price": 0,
+    "currency": "usd",
+    "length": 15,
+    "bookingId": 12291523,
+    "metadata": {},
+    "status": "ACCEPTED"
+  }
+]

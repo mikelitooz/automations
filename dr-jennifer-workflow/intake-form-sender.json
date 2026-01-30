@@ -1,0 +1,329 @@
+{
+  "name": "Dr. Jennifer - Intake Form Sender (48hr Before Appointment)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 1
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger-001",
+      "name": "Run Every Hour",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        240,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Calculate the 48-hour window for sending intake forms\nconst now = new Date();\n\n// Calculate target time: 48 hours from now\nconst target48hr = new Date(now.getTime() + (48 * 60 * 60 * 1000));\n\n// Create date range (47-49 hours to account for hourly runs)\nconst windowStart = new Date(now.getTime() + (47 * 60 * 60 * 1000));\nconst windowEnd = new Date(now.getTime() + (49 * 60 * 60 * 1000));\n\n// Format dates for Google Sheets filtering\nconst formatDate = (date) => {\n  const month = String(date.getMonth() + 1).padStart(2, '0');\n  const day = String(date.getDate()).padStart(2, '0');\n  const year = date.getFullYear();\n  return `${month}/${day}/${year}`;\n};\n\nconst targetDate = formatDate(target48hr);\n\nreturn {\n  json: {\n    now: now.toISOString(),\n    target48hr: target48hr.toISOString(),\n    targetDate: targetDate,\n    windowStart: windowStart.toISOString(),\n    windowEnd: windowEnd.toISOString()\n  }\n};"
+      },
+      "id": "calculate-48hr-window",
+      "name": "Calculate 48hr Window",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        460,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $env.GOOGLE_SHEET_ID }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Appointments",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "matchingColumns": [],
+          "value": {}
+        },
+        "options": {
+          "useAppend": false
+        }
+      },
+      "id": "get-appointments-sheet",
+      "name": "Get Tomorrow's Appointments",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.4,
+      "position": [
+        680,
+        300
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "google-sheets-credential",
+          "name": "Google Sheets Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Filter appointments that need intake forms sent\nconst appointments = $input.all();\nconst targetDate = $('Calculate 48hr Window').first().json.targetDate;\n\nconst needsForm = [];\n\nfor (const item of appointments) {\n  const apt = item.json;\n  \n  // Skip if no date or status\n  if (!apt.Date || !apt.Status) continue;\n  \n  // Parse appointment date (format: MM/DD/YYYY)\n  const aptDate = apt.Date;\n  \n  // Check conditions:\n  // 1. Appointment date matches 48hr window\n  // 2. Status is SCHEDULED\n  // 3. Form not already sent (Form_Link_Sent is not \"Yes\")\n  // 4. Patient has phone number\n  // 5. Patient has insurance info (for intake form context)\n  \n  const dateMatch = aptDate === targetDate;\n  const isScheduled = apt.Status === 'SCHEDULED';\n  const formNotSent = apt.Form_Link_Sent !== 'Yes';\n  const hasPhone = apt.Phone && apt.Phone.trim() !== '';\n  \n  if (dateMatch && isScheduled && formNotSent && hasPhone) {\n    // Generate unique appointment ID for tracking\n    const appointmentId = `APT-${apt.Date.replace(/\\//g, '')}-${apt.Time.replace(/:/g, '').replace(/ /g, '')}-${apt.Patient_Name.replace(/ /g, '-')}`;\n    \n    // Create Typeform URL with hidden fields\n    const typeformBaseUrl = process.env.TYPEFORM_FORM_URL || 'https://form.typeform.com/to/YOUR_FORM_ID';\n    \n    // Add hidden fields to track patient context\n    const hiddenFields = [\n      `patient_name=${encodeURIComponent(apt.Patient_Name)}`,\n      `appointment_id=${encodeURIComponent(appointmentId)}`,\n      `phone=${encodeURIComponent(apt.Phone)}`,\n      `appointment_date=${encodeURIComponent(apt.Date)}`,\n      `appointment_time=${encodeURIComponent(apt.Time)}`,\n      `insurance_company=${encodeURIComponent(apt.Insurance_Company || '')}`,\n      `member_id=${encodeURIComponent(apt.Member_ID || '')}`\n    ];\n    \n    const formUrl = `${typeformBaseUrl}?${hiddenFields.join('&')}`;\n    \n    needsForm.push({\n      json: {\n        ...apt,\n        appointmentId: appointmentId,\n        formUrl: formUrl,\n        rowNumber: item.json.rowNumber || appointments.indexOf(item) + 2 // +2 for header row and 0-index\n      }\n    });\n  }\n}\n\nif (needsForm.length === 0) {\n  // No appointments need forms, return empty to stop workflow\n  return [];\n}\n\nreturn needsForm;"
+      },
+      "id": "filter-needs-form",
+      "name": "Filter: Needs Intake Form",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        900,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "no-appointments-condition",
+              "leftValue": "={{ $json.length }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-if-appointments-exist",
+      "name": "Any Appointments?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.twilio.com/2010-04-01/Accounts/={{ $credentials.twilioApi.accountSid }}/Messages.json",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "twilioApi",
+        "sendBody": true,
+        "contentType": "form-urlencoded",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "From",
+              "value": "={{ $env.TWILIO_PHONE_NUMBER }}"
+            },
+            {
+              "name": "To",
+              "value": "={{ $json.Phone }}"
+            },
+            {
+              "name": "Body",
+              "value": "=Hi {{ $json.Patient_Name.split(' ')[0] }},\n\nYour appointment is in 2 days on {{ $json.Date }} at {{ $json.Time }}.\n\nPlease complete your intake form before your visit:\n{{ $json.formUrl }}\n\nThis will save time at check-in. Thank you!\n\n- Dr. Jennifer's Office"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "send-intake-sms",
+      "name": "Send Intake Form SMS",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1340,
+        200
+      ],
+      "credentials": {
+        "twilioApi": {
+          "id": "twilio-credential",
+          "name": "Twilio Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $env.GOOGLE_SHEET_ID }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Appointments",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Form_Link_Sent": "Yes",
+            "Form_Link_Sent_Date": "={{ new Date().toLocaleString('en-US', { timeZone: 'America/New_York' }) }}",
+            "Form_Completion_Link": "={{ $('Filter: Needs Intake Form').item.json.formUrl }}"
+          },
+          "matchingColumns": [
+            "Patient_Name",
+            "Date",
+            "Time"
+          ]
+        },
+        "options": {}
+      },
+      "id": "update-sheet-form-sent",
+      "name": "Update Sheet: Form Sent",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.4,
+      "position": [
+        1560,
+        200
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "google-sheets-credential",
+          "name": "Google Sheets Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "## 📋 Intake Form Sender Workflow\n\n**Purpose**: Automatically send intake forms 48 hours before appointments\n\n**Runs**: Every hour\n\n**Process**:\n1️⃣ Calculate 48-hour window\n2️⃣ Find appointments in window\n3️⃣ Filter: Status=SCHEDULED, Form not sent, Has phone\n4️⃣ Generate unique Typeform URL with patient context\n5️⃣ Send SMS with form link\n6️⃣ Update Google Sheet with Form_Link_Sent flag\n\n**Skips**:\n- Appointments where Form_Link_Sent = \"Yes\"\n- Patients without phone numbers\n- Non-SCHEDULED appointments\n\n**SMS Template**:\n\"Hi [FirstName], your appointment is in 2 days on [Date] at [Time]. Please complete your intake form before your visit: [URL]. This will save time at check-in. Thank you! - Dr. Jennifer's Office\"\n\n**Google Sheet Updates**:\n- Form_Link_Sent → \"Yes\"\n- Form_Link_Sent_Date → Current timestamp\n- Form_Completion_Link → Unique URL",
+        "height": 464,
+        "width": 389,
+        "color": 4
+      },
+      "id": "sticky-note-workflow-info",
+      "name": "Workflow Info",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        240,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## ⚙️ Required Environment Variables\n\n**Set in n8n Settings → Variables**:\n\n- `GOOGLE_SHEET_ID` - Your appointments spreadsheet ID\n- `TWILIO_PHONE_NUMBER` - Your Twilio phone number (+1XXXXXXXXXX)\n- `TYPEFORM_FORM_URL` - Your Typeform intake form URL\n\n**Example**:\n```\nGOOGLE_SHEET_ID=1ABC...xyz\nTWILIO_PHONE_NUMBER=+15551234567\nTYPEFORM_FORM_URL=https://form.typeform.com/to/abc123\n```",
+        "height": 317,
+        "width": 354,
+        "color": 6
+      },
+      "id": "sticky-note-env-vars",
+      "name": "Environment Variables",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        660,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 🔗 Typeform Hidden Fields\n\n**Passed in URL to track patient context**:\n\n- `patient_name` - Full patient name\n- `appointment_id` - Unique appointment ID\n- `phone` - Patient phone number\n- `appointment_date` - Appointment date\n- `appointment_time` - Appointment time\n- `insurance_company` - Insurance provider\n- `member_id` - Insurance member ID\n\nThese fields are captured when patient submits form and used in the webhook workflow to match back to Google Sheet.",
+        "height": 357,
+        "width": 354,
+        "color": 5
+      },
+      "id": "sticky-note-hidden-fields",
+      "name": "Typeform Hidden Fields",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1040,
+        480
+      ]
+    }
+  ],
+  "connections": {
+    "Run Every Hour": {
+      "main": [
+        [
+          {
+            "node": "Calculate 48hr Window",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculate 48hr Window": {
+      "main": [
+        [
+          {
+            "node": "Get Tomorrow's Appointments",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Tomorrow's Appointments": {
+      "main": [
+        [
+          {
+            "node": "Filter: Needs Intake Form",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter: Needs Intake Form": {
+      "main": [
+        [
+          {
+            "node": "Any Appointments?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Any Appointments?": {
+      "main": [
+        [
+          {
+            "node": "Send Intake Form SMS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Intake Form SMS": {
+      "main": [
+        [
+          {
+            "node": "Update Sheet: Form Sent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 1,
+  "updatedAt": "2026-01-27T12:00:00.000Z",
+  "versionId": "1"
+}

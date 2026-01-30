@@ -1,0 +1,183 @@
+{
+  "name": "4. Hyper-Personalized Email Generator",
+  "nodes": [
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "event": "rowUpdated",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "YOUR_GOOGLE_SHEET_ID"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "id",
+          "value": "Raw Leads"
+        }
+      },
+      "id": "sheets-trigger",
+      "name": "On Lead Qualified",
+      "type": "n8n-nodes-base.googleSheetsTrigger",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json['Qualification Status'] }}",
+              "operation": "equals",
+              "value2": "Qualified"
+            },
+            {
+              "value1": "={{ $json['Email Subject'] }}",
+              "operation": "isEmpty"
+            }
+          ]
+        }
+      },
+      "id": "filter-qualified",
+      "name": "Filter: Qualified + No Email",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Generate a personalized cold email for an automation agency to a potential client.\n\nLEAD INFORMATION:\n- First Name: {{ $json['First Name'] }}\n- Company: {{ $json['Company Name'] }}\n- Job Title: {{ $json['Job Title'] }}\n- Industry: {{ $json['Industry'] }}\n- Pain Points: {{ $json['Pain Points Identified'] }}\n- Automation Opportunities: {{ $json['Automation Opportunities'] }}\n- Recent Context: {{ $json['Qualification Notes'] }}\n\nYOUR TASK:\nGenerate a cold email (80-100 words) that:\n\n1. Opens with specific reference to their company/situation (use pain points or context)\n2. Identifies the operational challenge they likely face\n3. Offers automation solution relevant to their industry\n4. Includes brief proof/example (case study or result)\n5. Ends with soft question CTA (not pushy)\n\nSTYLE GUIDELINES:\n- Conversational, not corporate\n- Confident but humble\n- No hype words (revolutionary, game-changing, etc.)\n- No spam trigger words (free, urgent, act now, etc.)\n- Sound like a helpful peer, not a salesperson\n\nEMAIL STRUCTURE:\n\nSubject: [Personalized subject referencing their specific situation]\n\nHi {{ $json['First Name'] }},\n\n[Opening line - reference specific observation about their company]\n\n[Articulate the pain point/challenge they likely feel]\n\n[Brief value proposition - how automation solves it]\n\n[Quick proof - case study or result for similar company]\n\n[Soft CTA - question, not pushy request]\n\nBest,\nIzzy\nAutomation Agency\n\n---\nThis is a business inquiry. Reply \"stop\" to unsubscribe.\nAutomation Agency | 1234 Main St, Los Angeles, CA 90001\n\nOUTPUT FORMAT:\nReturn as JSON:\n{\n  \"subject\": \"...\",\n  \"body\": \"...\"\n}\n\nDO NOT include footer in body (will be added automatically).\nDO NOT use {{first_name}} placeholders - use the actual name."
+      },
+      "id": "ai-chain",
+      "name": "AI Email Generator",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.4,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "options": {
+          "temperature": 0.8
+        }
+      },
+      "id": "openai-model",
+      "name": "ChatGPT Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1,
+      "position": [680, 160]
+    },
+    {
+      "parameters": {
+        "jsonSchema": "={\n  \"type\": \"object\",\n  \"properties\": {\n    \"subject\": {\"type\": \"string\"},\n    \"body\": {\"type\": \"string\"}\n  },\n  \"required\": [\"subject\", \"body\"]\n}"
+      },
+      "id": "output-parser",
+      "name": "Parse Email Output",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1,
+      "position": [680, 420]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "YOUR_GOOGLE_SHEET_ID"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "id",
+          "value": "Raw Leads"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Email Subject": "={{ $json.output.subject }}",
+            "Email Body": "={{ $json.output.body }}",
+            "Email Status": "Ready"
+          },
+          "matchingColumns": ["Lead ID"]
+        },
+        "options": {}
+      },
+      "id": "update-sheets",
+      "name": "Save Generated Email",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [900, 300]
+    }
+  ],
+  "connections": {
+    "On Lead Qualified": {
+      "main": [
+        [
+          {
+            "node": "Filter: Qualified + No Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter: Qualified + No Email": {
+      "main": [
+        [
+          {
+            "node": "AI Email Generator",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ChatGPT Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Email Generator",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Email Output": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "AI Email Generator",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Email Generator": {
+      "main": [
+        [
+          {
+            "node": "Save Generated Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 0,
+  "updatedAt": "2025-01-04T00:00:00.000Z",
+  "versionId": "1"
+}

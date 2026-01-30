@@ -1,0 +1,383 @@
+{
+  "name": "Marcus Real Estate - Property Recommendations",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 9 * * *"
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Daily at 9 AM",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [240, 400]
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $env.GOOGLE_SHEETS_ID }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Master Leads",
+          "mode": "name"
+        },
+        "options": {
+          "range": ""
+        }
+      },
+      "id": "read-qualified-leads",
+      "name": "Read Qualified Leads",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [460, 400],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "googleSheetsOAuth2",
+          "name": "Google Sheets OAuth2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false
+          },
+          "conditions": [
+            {
+              "id": "filter-qualified",
+              "leftValue": "={{ $json['Lead Score'] }}",
+              "rightValue": "Unqualified",
+              "operator": {
+                "type": "string",
+                "operation": "notEquals"
+              }
+            },
+            {
+              "id": "filter-active",
+              "leftValue": "={{ $json['Status'] }}",
+              "rightValue": "=Qualified|Active|Viewing Scheduled",
+              "operator": {
+                "type": "string",
+                "operation": "regex"
+              }
+            }
+          ],
+          "combineOperation": "all"
+        },
+        "options": {}
+      },
+      "id": "filter-active-leads",
+      "name": "Filter: Active Qualified Leads",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.1,
+      "position": [680, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Prepare search parameters for MLS/Zillow API\nconst leads = $input.all();\nconst searchRequests = [];\n\nfor (const item of leads) {\n  const lead = item.json;\n  \n  // Extract budget (handle various formats)\n  let minPrice = 0;\n  let maxPrice = 999999999;\n  \n  if (lead.Budget) {\n    const budgetStr = String(lead.Budget).replace(/[^\\d-]/g, '');\n    \n    // Handle range (e.g., \"200000-300000\")\n    if (budgetStr.includes('-')) {\n      const [min, max] = budgetStr.split('-').map(Number);\n      minPrice = min || 0;\n      maxPrice = max || 999999999;\n    } else {\n      // Single number - add ±10% buffer\n      const budget = Number(budgetStr);\n      if (budget > 0) {\n        minPrice = Math.floor(budget * 0.9);\n        maxPrice = Math.ceil(budget * 1.1);\n      }\n    }\n  }\n  \n  // Extract bedrooms/bathrooms from priorities\n  let minBedrooms = 0;\n  let minBathrooms = 0;\n  \n  if (lead.Priorities) {\n    const bedsMatch = lead.Priorities.match(/(\\d+)\\s*(?:bed|br|bedroom)/i);\n    const bathsMatch = lead.Priorities.match(/(\\d+)\\s*(?:bath|ba|bathroom)/i);\n    \n    minBedrooms = bedsMatch ? parseInt(bedsMatch[1]) : 0;\n    minBathrooms = bathsMatch ? parseInt(bathsMatch[1]) : 0;\n  }\n  \n  // Extract location/zip codes from priorities\n  const locationMatch = lead.Priorities?.match(/\\b\\d{5}\\b/); // ZIP code\n  const location = locationMatch ? locationMatch[0] : '';\n  \n  searchRequests.push({\n    json: {\n      leadName: lead.Name,\n      leadEmail: lead.Email,\n      leadPhone: lead.Phone,\n      leadRowId: lead.rowNumber || lead['Row ID'],\n      searchParams: {\n        minPrice,\n        maxPrice,\n        minBedrooms,\n        minBathrooms,\n        propertyType: lead['Property Type'] || 'any',\n        location: location || 'any',\n        status: 'active',\n        daysListed: 30 // Only properties listed in last 30 days\n      },\n      leadPreferences: {\n        budget: lead.Budget,\n        priorities: lead.Priorities,\n        timeline: lead.Timeline\n      }\n    }\n  });\n}\n\nreturn searchRequests;"
+      },
+      "id": "prepare-search-params",
+      "name": "Prepare MLS Search Parameters",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 400]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.MLS_API_URL || 'https://api.bridgedataoutput.com/api/v2/OData/listings' }}",
+        "method": "GET",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "$filter",
+              "value": "=ListPrice ge {{ $json.searchParams.minPrice }} and ListPrice le {{ $json.searchParams.maxPrice }} and BedroomsTotal ge {{ $json.searchParams.minBedrooms }} and BathroomsTotalInteger ge {{ $json.searchParams.minBathrooms }} and StandardStatus eq 'Active'"
+            },
+            {
+              "name": "$top",
+              "value": "8"
+            },
+            {
+              "name": "$orderby",
+              "value": "ListPrice asc"
+            },
+            {
+              "name": "$select",
+              "value": "ListingId,ListPrice,UnparsedAddress,City,StateOrProvince,PostalCode,BedroomsTotal,BathroomsTotalInteger,LivingArea,PropertyType,ListingKey,Media"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "mls-api-search",
+      "name": "Search MLS API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1120, 280]
+    },
+    {
+      "parameters": {
+        "url": "https://api.apify.com/v2/acts/compass~zillow-api-scraper/run-sync-get-dataset-items",
+        "method": "POST",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.APIFY_TOKEN }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"maxItems\": 8,\n  \"searchQueryState\": {\n    \"price\": {\n      \"min\": {{ $json.searchParams.minPrice }},\n      \"max\": {{ $json.searchParams.maxPrice }}\n    },\n    \"beds\": {\n      \"min\": {{ $json.searchParams.minBedrooms }}\n    },\n    \"baths\": {\n      \"min\": {{ $json.searchParams.minBathrooms }}\n    },\n    \"isForSaleByAgent\": true,\n    \"isNewConstruction\": false,\n    \"isForSaleForeclosure\": false,\n    \"doz\": \"30\" \n  },\n  \"includeRelaxedResults\": true\n}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "zillow-api-fallback",
+      "name": "Zillow API (Fallback)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1120, 520]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Process and rank property results\nconst searchData = $('Prepare MLS Search Parameters').item.json;\nconst properties = $input.item.json.value || $input.item.json; // Handle MLS or Zillow format\n\nif (!properties || properties.length === 0) {\n  return [{ json: { noResults: true, leadData: searchData } }];\n}\n\n// Normalize property data (MLS vs Zillow formats differ)\nconst normalizedProperties = properties.slice(0, 8).map(prop => {\n  // MLS format\n  if (prop.ListingId) {\n    return {\n      id: prop.ListingId || prop.ListingKey,\n      price: prop.ListPrice,\n      address: prop.UnparsedAddress,\n      city: prop.City,\n      state: prop.StateOrProvince,\n      zip: prop.PostalCode,\n      bedrooms: prop.BedroomsTotal,\n      bathrooms: prop.BathroomsTotalInteger,\n      sqft: prop.LivingArea,\n      propertyType: prop.PropertyType,\n      imageUrl: prop.Media?.[0]?.MediaURL || '',\n      listingUrl: `https://www.realtor.com/realestateandhomes-detail/${prop.ListingKey}`,\n      daysOnMarket: prop.DaysOnMarket || 'N/A'\n    };\n  }\n  // Zillow format\n  else {\n    return {\n      id: prop.zpid,\n      price: prop.price,\n      address: prop.address?.streetAddress,\n      city: prop.address?.city,\n      state: prop.address?.state,\n      zip: prop.address?.zipcode,\n      bedrooms: prop.bedrooms,\n      bathrooms: prop.bathrooms,\n      sqft: prop.livingArea,\n      propertyType: prop.homeType,\n      imageUrl: prop.imgSrc || prop.photos?.[0] || '',\n      listingUrl: prop.detailUrl,\n      daysOnMarket: prop.daysOnZillow || 'N/A'\n    };\n  }\n});\n\nreturn [{\n  json: {\n    leadData: searchData,\n    properties: normalizedProperties,\n    totalFound: normalizedProperties.length\n  }\n}];"
+      },
+      "id": "process-properties",
+      "name": "Process & Normalize Properties",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1340, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Generate beautiful property recommendation PDF (HTML)\nconst data = $input.first().json;\n\nif (data.noResults) {\n  return [{ json: { skip: true, reason: 'No properties found' } }];\n}\n\nconst { leadData, properties } = data;\nconst leadName = leadData.leadName.split(' ')[0]; // First name\n\n// Generate property cards HTML\nconst propertyCards = properties.map((prop, index) => `\n  <div style=\"border: 1px solid #e2e8f0; border-radius: 8px; padding: 20px; margin-bottom: 20px; background: white;\">\n    <div style=\"display: flex; gap: 20px;\">\n      <img src=\"${prop.imageUrl}\" alt=\"Property ${index + 1}\" style=\"width: 300px; height: 200px; object-fit: cover; border-radius: 8px;\" />\n      <div style=\"flex: 1;\">\n        <h3 style=\"margin: 0 0 10px 0; color: #1e293b; font-size: 20px;\">$${prop.price.toLocaleString()}</h3>\n        <p style=\"margin: 5px 0; color: #64748b; font-size: 16px;\">\n          <strong>${prop.address}</strong><br/>\n          ${prop.city}, ${prop.state} ${prop.zip}\n        </p>\n        <p style=\"margin: 10px 0; color: #475569; font-size: 15px;\">\n          🛏️ ${prop.bedrooms} beds | 🛁 ${prop.bathrooms} baths | 📐 ${prop.sqft?.toLocaleString() || 'N/A'} sqft\n        </p>\n        <p style=\"margin: 10px 0; color: #64748b; font-size: 14px;\">\n          📅 Days on Market: ${prop.daysOnMarket}\n        </p>\n        <a href=\"${prop.listingUrl}\" style=\"display: inline-block; background: #2563eb; color: white; padding: 10px 20px; text-decoration: none; border-radius: 6px; margin-top: 10px; font-size: 14px;\">\n          View Full Listing\n        </a>\n        <a href=\"{{ $env.CALENDLY_URL || 'https://calendly.com/marcus' }}\" style=\"display: inline-block; background: #10b981; color: white; padding: 10px 20px; text-decoration: none; border-radius: 6px; margin-top: 10px; margin-left: 10px; font-size: 14px;\">\n          Schedule Viewing\n        </a>\n      </div>\n    </div>\n  </div>\n`).join('');\n\nconst htmlContent = `\n<!DOCTYPE html>\n<html>\n<head>\n  <style>\n    body { font-family: 'Segoe UI', Arial, sans-serif; line-height: 1.6; color: #333; background: #f8fafc; margin: 0; padding: 0; }\n    .container { max-width: 900px; margin: 0 auto; padding: 20px; }\n    .header { background: linear-gradient(135deg, #2563eb 0%, #1e40af 100%); color: white; padding: 40px; border-radius: 12px 12px 0 0; text-align: center; }\n    .header h1 { margin: 0; font-size: 32px; }\n    .header p { margin: 10px 0 0 0; font-size: 18px; opacity: 0.95; }\n    .content { background: #ffffff; padding: 30px; border: 1px solid #e2e8f0; }\n    .intro { background: #eff6ff; border-left: 4px solid #2563eb; padding: 20px; margin-bottom: 30px; border-radius: 4px; }\n    .footer { background: #f1f5f9; padding: 20px; text-align: center; border-radius: 0 0 12px 12px; margin-top: 20px; }\n  </style>\n</head>\n<body>\n  <div class=\"container\">\n    <div class=\"header\">\n      <h1>🏠 Your Personalized Property Matches</h1>\n      <p>Curated for ${leadName} by Marcus</p>\n    </div>\n    <div class=\"content\">\n      <div class=\"intro\">\n        <p style=\"margin: 0; font-size: 16px; color: #1e40af;\">\n          <strong>Hi ${leadName}!</strong> 👋<br/><br/>\n          Based on your preferences (budget: <strong>${leadData.leadPreferences.budget}</strong>), I've handpicked these ${properties.length} properties that match what you're looking for.\n        </p>\n      </div>\n      \n      ${propertyCards}\n      \n      <div style=\"background: #fef3c7; border-left: 4px solid #f59e0b; padding: 20px; margin-top: 30px; border-radius: 4px;\">\n        <p style=\"margin: 0; color: #92400e;\">\n          <strong>💡 Pro Tip:</strong> These properties are hot! In this market, homes at this price point go fast. Let's schedule viewings ASAP.\n        </p>\n      </div>\n    </div>\n    <div class=\"footer\">\n      <p style=\"margin: 0 0 10px 0; color: #64748b;\">\n        Questions? Ready to view? Just reply to this email or text me!\n      </p>\n      <p style=\"margin: 0; color: #475569; font-size: 14px;\">\n        📧 ${leadData.leadEmail} | 📞 {{ $env.AGENT_PHONE }}\n      </p>\n    </div>\n  </div>\n</body>\n</html>\n`;\n\nreturn [{\n  json: {\n    ...data,\n    emailSubject: `${properties.length} Perfect Homes for You, ${leadName}!`,\n    emailBody: htmlContent,\n    propertyCount: properties.length\n  }\n}];"
+      },
+      "id": "generate-property-email",
+      "name": "Generate Property Email",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1560, 400]
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $env.AGENT_EMAIL }}",
+        "toEmail": "={{ $json.leadData.leadEmail }}",
+        "subject": "={{ $json.emailSubject }}",
+        "emailType": "html",
+        "message": "={{ $json.emailBody }}",
+        "options": {}
+      },
+      "id": "send-property-email",
+      "name": "Send Property Recommendations",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [1780, 400],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "gmailOAuth2",
+          "name": "Gmail OAuth2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $env.GOOGLE_SHEETS_ID }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Master Leads",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Properties Sent": "={{ $json.propertyCount }} properties sent on {{ $now.toFormat('yyyy-MM-dd') }}",
+            "Last Contact": "={{ $now.toISO() }}",
+            "Engagement Score": "={{ $json.leadData.engagementScore || 0 }}"
+          }
+        },
+        "options": {}
+      },
+      "id": "update-tracking",
+      "name": "Update Lead Tracking",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [2000, 400],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "googleSheetsOAuth2",
+          "name": "Google Sheets OAuth2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "## PROPERTY RECOMMENDATIONS ENGINE\n\nRuns daily at 9 AM:\n1. Reads all qualified active leads\n2. Searches MLS/Zillow for matching properties:\n   - Price: Budget ±10%\n   - Beds/baths from priorities\n   - Listed in last 30 days\n3. Generates beautiful HTML email with:\n   - 8 top matches\n   - Photos, specs, links\n   - \"Schedule Viewing\" buttons\n4. Tracks engagement in sheet\n\nFuture enhancements:\n- Price drop alerts\n- New listing instant notifications\n- Click tracking for engagement scoring",
+        "height": 380,
+        "width": 320,
+        "color": 6
+      },
+      "id": "sticky-note-properties",
+      "name": "Sticky Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [240, 40]
+    }
+  ],
+  "connections": {
+    "Daily at 9 AM": {
+      "main": [
+        [
+          {
+            "node": "Read Qualified Leads",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Qualified Leads": {
+      "main": [
+        [
+          {
+            "node": "Filter: Active Qualified Leads",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter: Active Qualified Leads": {
+      "main": [
+        [
+          {
+            "node": "Prepare MLS Search Parameters",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare MLS Search Parameters": {
+      "main": [
+        [
+          {
+            "node": "Search MLS API",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Zillow API (Fallback)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search MLS API": {
+      "main": [
+        [
+          {
+            "node": "Process & Normalize Properties",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Zillow API (Fallback)": {
+      "main": [
+        [
+          {
+            "node": "Process & Normalize Properties",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process & Normalize Properties": {
+      "main": [
+        [
+          {
+            "node": "Generate Property Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Property Email": {
+      "main": [
+        [
+          {
+            "node": "Send Property Recommendations",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Property Recommendations": {
+      "main": [
+        [
+          {
+            "node": "Update Lead Tracking",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "createdAt": "2025-01-22T00:00:00.000Z",
+      "updatedAt": "2025-01-22T00:00:00.000Z",
+      "id": "real-estate-automation",
+      "name": "Real Estate Automation"
+    }
+  ],
+  "triggerCount": 1,
+  "updatedAt": "2025-01-22T00:00:00.000Z",
+  "versionId": "1"
+}
