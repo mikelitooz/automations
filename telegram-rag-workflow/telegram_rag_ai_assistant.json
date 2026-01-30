@@ -1,0 +1,226 @@
+{
+  "name": "Telegram RAG AI Assistant",
+  "nodes": [
+    {
+      "id": "1",
+      "name": "Telegram Trigger",
+      "type": "@n8n/n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1,
+      "position": [
+        250,
+        300
+      ],
+      "parameters": {
+        "event": "message"
+      },
+      "credentials": {
+        "telegramApi": {
+          "id": "__REPLACE_TELEGRAM_CREDENTIAL_ID__"
+        }
+      }
+    },
+    {
+      "id": "2",
+      "name": "Parse Telegram Message",
+      "type": "@n8n/n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        500,
+        300
+      ],
+      "parameters": {
+        "functionCode": "return [\n  {\n    json: {\n      userMessage: $json.message.text,\n      chatId: $json.message.chat.id\n    }\n  }\n];"
+      }
+    },
+    {
+      "id": "3",
+      "name": "AI Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1,
+      "position": [
+        800,
+        300
+      ],
+      "parameters": {
+        "promptType": "define",
+        "text": "You are a Real Estate AI Assistant for agents. You MUST answer only using information from the connected knowledge base and tools. Always try to ground your answers in the retrieved documents. If the documents do not contain enough information to answer, respond exactly with: \"I'm not sure \u2013 this is not covered in the current documentation.\"\\n\\nUser question:\\n{{ $json[\"userMessage\"] }}",
+        "tools": [
+          {
+            "id": "pinecone-tool",
+            "nodeId": "5"
+          }
+        ]
+      }
+    },
+    {
+      "id": "4",
+      "name": "Format Response",
+      "type": "@n8n/n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        1050,
+        300
+      ],
+      "parameters": {
+        "functionCode": "const answer =\n  $json.output ||\n  $json.answer ||\n  $json.text ||\n  $json.data ||\n  \"Sorry, I couldn't generate an answer.\";\n\nreturn [{ json: { reply: answer, chatId: $node[\"Parse Telegram Message\"].json.chatId } }];"
+      }
+    },
+    {
+      "id": "5",
+      "name": "Pinecone Vector Store1",
+      "type": "@n8n/n8n-nodes-langchain.vectorStorePinecone",
+      "typeVersion": 1,
+      "position": [
+        800,
+        550
+      ],
+      "parameters": {
+        "operation": "retrieve",
+        "pineconeIndex": {
+          "mode": "list",
+          "list": "demo"
+        },
+        "pineconeNamespace": "RealEstateKB",
+        "includeMetadata": true,
+        "limit": 4
+      },
+      "credentials": {
+        "pineconeApi": {
+          "id": "__REPLACE_PINECONE_CREDENTIAL_ID__"
+        }
+      }
+    },
+    {
+      "id": "6",
+      "name": "Embeddings OpenAI1",
+      "type": "@n8n/n8n-nodes-langchain.embeddingsOpenAI",
+      "typeVersion": 1,
+      "position": [
+        600,
+        550
+      ],
+      "parameters": {
+        "model": "text-embedding-3-small"
+      },
+      "credentials": {
+        "openAiApi": {
+          "id": "__REPLACE_OPENAI_CREDENTIAL_ID__"
+        }
+      }
+    },
+    {
+      "id": "7",
+      "name": "OpenAI Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.chatModelOpenAI",
+      "typeVersion": 1,
+      "position": [
+        600,
+        150
+      ],
+      "parameters": {
+        "model": "gpt-4o-mini",
+        "temperature": 0.3
+      },
+      "credentials": {
+        "openAiApi": {
+          "id": "__REPLACE_OPENAI_CREDENTIAL_ID__"
+        }
+      }
+    },
+    {
+      "id": "8",
+      "name": "Telegram Send Message",
+      "type": "@n8n/n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [
+        1300,
+        300
+      ],
+      "parameters": {
+        "operation": "sendMessage",
+        "text": "={{ $json.reply }}",
+        "chatId": "={{ $json.chatId }}"
+      },
+      "credentials": {
+        "telegramApi": {
+          "id": "__REPLACE_TELEGRAM_CREDENTIAL_ID__"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Telegram Trigger": {
+      "main": [
+        [
+          {
+            "node": "Parse Telegram Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Telegram Message": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Format Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ],
+      "ai_languageModel": [
+        [
+          {
+            "node": "OpenAI Chat Model",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ],
+      "ai_vectorStore": [
+        [
+          {
+            "node": "Pinecone Vector Store1",
+            "type": "ai_vectorStore",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Response": {
+      "main": [
+        [
+          {
+            "node": "Telegram Send Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pinecone Vector Store1": {
+      "ai_embedding": [
+        [
+          {
+            "node": "Embeddings OpenAI1",
+            "type": "ai_embedding",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}
