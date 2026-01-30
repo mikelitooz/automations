@@ -1,0 +1,427 @@
+{
+    "name": "Headhunter Agent - Automated LTC Recruitment",
+    "nodes": [
+        {
+            "parameters": {
+                "method": "POST",
+                "url": "https://api.phantombuster.com/api/v2/agents/launch",
+                "sendHeaders": true,
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "X-Phantombuster-Key",
+                            "value": "={{ $env.PHANTOMBUSTER_API_KEY }}"
+                        }
+                    ]
+                },
+                "sendBody": true,
+                "bodyParameters": {
+                    "parameters": [
+                        {
+                            "name": "id",
+                            "value": "={{ $env.PHANTOMBUSTER_AGENT_ID }}"
+                        },
+                        {
+                            "name": "argument",
+                            "value": "={{ JSON.stringify({ search: $json.booleanSearchString }) }}"
+                        }
+                    ]
+                }
+            },
+            "id": "phantombuster-trigger",
+            "name": "PhantomBuster LinkedIn Scrape",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.2,
+            "position": [
+                250,
+                300
+            ],
+            "notes": "Trigger PhantomBuster with Core Boolean String (Section 4.1)"
+        },
+        {
+            "parameters": {
+                "mode": "jsonToBinary",
+                "sourceKey": "data",
+                "options": {}
+            },
+            "id": "cms-csv-ingest",
+            "name": "CMS POS CSV Read",
+            "type": "n8n-nodes-base.readBinaryFiles",
+            "typeVersion": 1,
+            "position": [
+                250,
+                500
+            ],
+            "notes": "Ingest CMS Provider of Services file for DON names (Section 5.1)"
+        },
+        {
+            "parameters": {
+                "jsCode": "/**\n * HEADHUNTER AGENT - GATEKEEPER CODE NODE\n * Implements Anti-Avatar filtering (Section 2.3) and Compact State logic (Section 4.3)\n */\n\nconst ACUTE_CARE_KEYWORDS = [\n  'trauma', 'er', 'emergency room', 'icu', 'intensive care',\n  'or', 'operating room', 'med-surg', 'medsurg', 'medical surgical',\n  'ccu', 'cardiac care', 'nicu', 'picu', 'pacu', 'cath lab'\n];\n\nconst CLINIC_OUTPATIENT_KEYWORDS = [\n  'dialysis manager', 'clinic supervisor', 'school nurse',\n  'outpatient', 'ambulatory', 'urgent care', 'physician office'\n];\n\nconst ACADEMIC_RESEARCH_KEYWORDS = [\n  'professor', 'faculty', 'research coordinator', 'instructor', 'academic'\n];\n\nconst LTC_CONTEXT_KEYWORDS = [\n  'snf', 'skilled nursing', 'nursing home', 'long term care', 'ltc',\n  'post-acute', 'rehab', 'subacute', 'assisted living', 'geriatric'\n];\n\nconst COMPACT_STATES = [\n  'AL', 'AZ', 'AR', 'CO', 'DE', 'FL', 'GA', 'ID', 'IN', 'IA',\n  'KS', 'KY', 'LA', 'ME', 'MD', 'MS', 'MO', 'MT', 'NE', 'NH',\n  'NJ', 'NM', 'NC', 'ND', 'OH', 'OK', 'SC', 'SD', 'TN', 'TX',\n  'UT', 'VA', 'VT', 'WV', 'WI', 'WY'\n];\n\nconst PRIORITY_DEPLOY_STATES = ['TX', 'FL', 'TN', 'VA', 'GA', 'NC', 'AZ'];\n\nconst INTERIM_FIXER_KEYWORDS = [\n  'interim', 'travel', 'contract', 'consultant', 'locum', 'temporary', 'agency'\n];\n\nconst TURNAROUND_SPECIALIST_KEYWORDS = [\n  'survey', 'plan of correction', 'poc', 'ij', 'immediate jeopardy',\n  'turnaround', 'regulatory compliance', 'mock survey', 'qapi'\n];\n\nconst MDS_SPECIALIST_KEYWORDS = [\n  'mds', 'mds coordinator', 'rac-ct', 'rai coordinator', 'pdpm', 'casemix'\n];\n\nconst CORPORATE_SNF_EMPLOYERS = [\n  'genesis', 'sava', 'ensign', 'golden living', 'promedica', 'signature healthcare'\n];\n\nfunction containsKeyword(text, keywords) {\n  if (!text) return false;\n  const lowerText = text.toLowerCase();\n  return keywords.some(kw => lowerText.includes(kw.toLowerCase()));\n}\n\nfunction extractState(location) {\n  if (!location) return null;\n  const match = location.match(/\\b([A-Z]{2})\\b/);\n  return match ? match[1] : null;\n}\n\nconst results = [];\n\nfor (const item of $input.all()) {\n  const c = item.json;\n  const searchText = [c.title, c.headline, c.description, c.summary, c.skills].join(' ').toLowerCase();\n  const employer = (c.company || '').toLowerCase();\n  const state = extractState(c.location || '');\n  \n  let qualified = true;\n  let disqualifyReason = null;\n  const hasLTCContext = containsKeyword(searchText, LTC_CONTEXT_KEYWORDS);\n  \n  if (containsKeyword(searchText, ACUTE_CARE_KEYWORDS) && !hasLTCContext) {\n    qualified = false;\n    disqualifyReason = 'Acute care without SNF context';\n  }\n  if (qualified && containsKeyword(searchText, CLINIC_OUTPATIENT_KEYWORDS)) {\n    qualified = false;\n    disqualifyReason = 'Clinic/Outpatient role';\n  }\n  if (qualified && containsKeyword(searchText, ACADEMIC_RESEARCH_KEYWORDS)) {\n    qualified = false;\n    disqualifyReason = 'Academic/Research role';\n  }\n  \n  const deployable = state && COMPACT_STATES.includes(state);\n  const priorityDeploy = state && PRIORITY_DEPLOY_STATES.includes(state);\n  \n  let avatarType = 'UNCLASSIFIED';\n  let priority = 'STANDARD';\n  \n  if (qualified) {\n    const isInterim = containsKeyword(searchText, INTERIM_FIXER_KEYWORDS);\n    const isTurnaround = containsKeyword(searchText, TURNAROUND_SPECIALIST_KEYWORDS);\n    const isMDS = containsKeyword(searchText, MDS_SPECIALIST_KEYWORDS);\n    const isCorporate = containsKeyword(employer, CORPORATE_SNF_EMPLOYERS);\n    \n    if (isTurnaround && isInterim) {\n      avatarType = 'TURNAROUND_SPECIALIST';\n      priority = 'HIGH';\n    } else if (isMDS) {\n      avatarType = 'MDS_SPECIALIST';\n      priority = 'HIGH';\n    } else if (isInterim) {\n      avatarType = 'INTERIM_FIXER';\n      priority = 'STANDARD';\n    } else if (!isInterim && isCorporate) {\n      avatarType = 'PASSIVE_BURNOUT';\n      priority = 'MEDIUM';\n    }\n  }\n  \n  results.push({\n    json: {\n      ...c,\n      qualified,\n      disqualifyReason,\n      deployable,\n      priorityDeploy,\n      candidateState: state,\n      avatarType,\n      priority,\n      processedAt: new Date().toISOString()\n    }\n  });\n}\n\nreturn results;"
+            },
+            "id": "gatekeeper-code",
+            "name": "Gatekeeper Filter",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                500,
+                300
+            ],
+            "notes": "Anti-Avatar filtering (Section 2.3) + Compact State tagging (Section 4.3)"
+        },
+        {
+            "parameters": {
+                "mode": "rules",
+                "options": {
+                    "fallbackOutput": "extra"
+                },
+                "rules": {
+                    "values": [
+                        {
+                            "outputKey": "Route A - Interim Fixer",
+                            "conditions": {
+                                "conditions": [
+                                    {
+                                        "leftValue": "={{ $json.qualified }}",
+                                        "rightValue": true,
+                                        "operator": {
+                                            "type": "boolean",
+                                            "operation": "equals"
+                                        }
+                                    },
+                                    {
+                                        "leftValue": "={{ $json.avatarType }}",
+                                        "rightValue": "INTERIM_FIXER",
+                                        "operator": {
+                                            "type": "string",
+                                            "operation": "equals"
+                                        }
+                                    }
+                                ],
+                                "combinator": "and"
+                            },
+                            "renameOutput": true
+                        },
+                        {
+                            "outputKey": "Route A+ - Turnaround",
+                            "conditions": {
+                                "conditions": [
+                                    {
+                                        "leftValue": "={{ $json.qualified }}",
+                                        "rightValue": true,
+                                        "operator": {
+                                            "type": "boolean",
+                                            "operation": "equals"
+                                        }
+                                    },
+                                    {
+                                        "leftValue": "={{ $json.avatarType }}",
+                                        "rightValue": "TURNAROUND_SPECIALIST",
+                                        "operator": {
+                                            "type": "string",
+                                            "operation": "equals"
+                                        }
+                                    }
+                                ],
+                                "combinator": "and"
+                            },
+                            "renameOutput": true
+                        },
+                        {
+                            "outputKey": "Route B - Passive Burnout",
+                            "conditions": {
+                                "conditions": [
+                                    {
+                                        "leftValue": "={{ $json.qualified }}",
+                                        "rightValue": true,
+                                        "operator": {
+                                            "type": "boolean",
+                                            "operation": "equals"
+                                        }
+                                    },
+                                    {
+                                        "leftValue": "={{ $json.avatarType }}",
+                                        "rightValue": "PASSIVE_BURNOUT",
+                                        "operator": {
+                                            "type": "string",
+                                            "operation": "equals"
+                                        }
+                                    }
+                                ],
+                                "combinator": "and"
+                            },
+                            "renameOutput": true
+                        },
+                        {
+                            "outputKey": "Route C - MDS Specialist",
+                            "conditions": {
+                                "conditions": [
+                                    {
+                                        "leftValue": "={{ $json.qualified }}",
+                                        "rightValue": true,
+                                        "operator": {
+                                            "type": "boolean",
+                                            "operation": "equals"
+                                        }
+                                    },
+                                    {
+                                        "leftValue": "={{ $json.avatarType }}",
+                                        "rightValue": "MDS_SPECIALIST",
+                                        "operator": {
+                                            "type": "string",
+                                            "operation": "equals"
+                                        }
+                                    }
+                                ],
+                                "combinator": "and"
+                            },
+                            "renameOutput": true
+                        },
+                        {
+                            "outputKey": "Disqualified",
+                            "conditions": {
+                                "conditions": [
+                                    {
+                                        "leftValue": "={{ $json.qualified }}",
+                                        "rightValue": false,
+                                        "operator": {
+                                            "type": "boolean",
+                                            "operation": "equals"
+                                        }
+                                    }
+                                ],
+                                "combinator": "and"
+                            },
+                            "renameOutput": true
+                        }
+                    ]
+                }
+            },
+            "id": "avatar-router",
+            "name": "Avatar Router",
+            "type": "n8n-nodes-base.switch",
+            "typeVersion": 3,
+            "position": [
+                750,
+                300
+            ],
+            "notes": "Routes based on Avatar definitions (Section 2.1)"
+        },
+        {
+            "parameters": {
+                "mode": "manual",
+                "duplicateItem": false,
+                "assignments": {
+                    "assignments": [
+                        {
+                            "id": "template",
+                            "name": "emailTemplate",
+                            "value": "A",
+                            "type": "string"
+                        },
+                        {
+                            "id": "subject",
+                            "name": "emailSubject",
+                            "value": "Interim availability / Your experience",
+                            "type": "string"
+                        },
+                        {
+                            "id": "body",
+                            "name": "emailBody",
+                            "value": "Hi {{ $json.firstName }},\n\nI was reviewing the interim leadership market today and your profile stood out—specifically your background in {{ $json.headline || 'LTC nursing leadership' }}.\n\nI'm Lynn Fossen, R.N., and I co-own NextLTC. We are a specialized firm connecting facilities with interim leadership support. Unlike the generalist agencies, we are nurse-owned and understand the specific reality of the DON role (especially during these chaotic survey windows!).\n\nWe are currently seeing a surge in demand for travel leaders with your specific regulatory skillset. Are you currently on assignment, or would you be open to a brief chat about what you're looking for in your next contract?\n\nBest,\nLynn Fossen, R.N.\nCo-owner, NextLTC",
+                            "type": "string"
+                        },
+                        {
+                            "id": "sender",
+                            "name": "senderName",
+                            "value": "Lynn Fossen, R.N.",
+                            "type": "string"
+                        }
+                    ]
+                }
+            },
+            "id": "set-template-a",
+            "name": "Template A - Direct",
+            "type": "n8n-nodes-base.set",
+            "typeVersion": 3.4,
+            "position": [
+                1000,
+                100
+            ],
+            "notes": "Section 6.2 - Template A for active interim candidates"
+        },
+        {
+            "parameters": {
+                "mode": "manual",
+                "duplicateItem": false,
+                "assignments": {
+                    "assignments": [
+                        {
+                            "id": "template",
+                            "name": "emailTemplate",
+                            "value": "B",
+                            "type": "string"
+                        },
+                        {
+                            "id": "subject",
+                            "name": "emailSubject",
+                            "value": "Question from a fellow RN / Leadership transitions",
+                            "type": "string"
+                        },
+                        {
+                            "id": "body",
+                            "name": "emailBody",
+                            "value": "Hi {{ $json.firstName }},\n\nI hope you're having a manageable week at {{ $json.company || 'your facility' }}.\n\nI'm reaching out because I see you've been navigating the DON role for a while now. I'm Lynn Fossen, R.N., with NextLTC.\n\nI know how demanding the permanent Director role has become, especially with the recent flux in CMS staffing mandates. Many of the leaders in my network are transitioning to interim/travel contracts to regain some flexibility and work-life balance while staying in leadership.\n\nI'm not sure if that's a path you've ever considered, but given your tenure, your experience would be highly valued. If you're ever curious about what the interim lifestyle looks like—or just need a change of pace—I'd love to connect.\n\nNo pressure at all, just wanted to say hello.\n\nTake care,\nLynn Fossen, R.N.",
+                            "type": "string"
+                        },
+                        {
+                            "id": "sender",
+                            "name": "senderName",
+                            "value": "Lynn Fossen, R.N.",
+                            "type": "string"
+                        }
+                    ]
+                }
+            },
+            "id": "set-template-b",
+            "name": "Template B - Soft Passive",
+            "type": "n8n-nodes-base.set",
+            "typeVersion": 3.4,
+            "position": [
+                1000,
+                300
+            ],
+            "notes": "Section 6.2 - Template B for burnout/passive candidates"
+        },
+        {
+            "parameters": {
+                "mode": "manual",
+                "duplicateItem": false,
+                "assignments": {
+                    "assignments": [
+                        {
+                            "id": "template",
+                            "name": "emailTemplate",
+                            "value": "C",
+                            "type": "string"
+                        },
+                        {
+                            "id": "subject",
+                            "name": "emailSubject",
+                            "value": "Industry inquiry / LTC Leadership network",
+                            "type": "string"
+                        },
+                        {
+                            "id": "body",
+                            "name": "emailBody",
+                            "value": "Hi {{ $json.firstName }},\n\nI'm writing to you as a fellow RN in the LTC space. I run a consulting firm (NextLTC) and I'm currently looking for a strong Interim DON for a contract that requires deep expertise.\n\nGiven your standing in the nursing community, I wondered if you might know any excellent leaders who are currently looking for travel assignments?\n\nOr, if you happen to be wrapping up a contract yourself, I'd certainly love to speak with you.\n\nThanks for any direction you can point me in.\n\nBest,\nLynn Fossen, R.N.",
+                            "type": "string"
+                        },
+                        {
+                            "id": "sender",
+                            "name": "senderName",
+                            "value": "Lynn Fossen, R.N.",
+                            "type": "string"
+                        }
+                    ]
+                }
+            },
+            "id": "set-template-c",
+            "name": "Template C - Referral",
+            "type": "n8n-nodes-base.set",
+            "typeVersion": 3.4,
+            "position": [
+                1000,
+                500
+            ],
+            "notes": "Section 6.2 - Template C for network/referral outreach"
+        }
+    ],
+    "connections": {
+        "PhantomBuster LinkedIn Scrape": {
+            "main": [
+                [
+                    {
+                        "node": "Gatekeeper Filter",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "CMS POS CSV Read": {
+            "main": [
+                [
+                    {
+                        "node": "Gatekeeper Filter",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Gatekeeper Filter": {
+            "main": [
+                [
+                    {
+                        "node": "Avatar Router",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Avatar Router": {
+            "main": [
+                [
+                    {
+                        "node": "Template A - Direct",
+                        "type": "main",
+                        "index": 0
+                    }
+                ],
+                [
+                    {
+                        "node": "Template A - Direct",
+                        "type": "main",
+                        "index": 0
+                    }
+                ],
+                [
+                    {
+                        "node": "Template B - Soft Passive",
+                        "type": "main",
+                        "index": 0
+                    }
+                ],
+                [
+                    {
+                        "node": "Template C - Referral",
+                        "type": "main",
+                        "index": 0
+                    }
+                ],
+                [],
+                [
+                    {
+                        "node": "Template C - Referral",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    },
+    "settings": {
+        "executionOrder": "v1"
+    },
+    "staticData": null,
+    "tags": [
+        "recruitment",
+        "headhunter",
+        "LTC",
+        "interim-nursing"
+    ],
+    "triggerCount": 0,
+    "updatedAt": "2026-01-16T09:07:00.000Z",
+    "versionId": "1"
+}
